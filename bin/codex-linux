@@ -90,6 +90,8 @@ Environment:
   CODEX_DMG_URL               Override the official DMG URL.
   CODEX_ELECTRON_VERSION      Override detected Electron version.
   CODEX_BETTER_SQLITE3_VERSION Override better-sqlite3 rebuild version.
+  CODEX_LINUX_CC              Override the C compiler used for native rebuilds.
+  CODEX_LINUX_CXX             Override the C++ compiler used for native rebuilds.
   CODEX_LINUX_OUTPUT_ROOT     Runtime output root.
   CODEX_LINUX_INSTALL_DIR     Runtime install directory.
   CODEX_LINUX_CACHE_DIR       Download cache directory.
@@ -164,9 +166,21 @@ doctor_impl() {
 
   [ "$(uname -s)" = "Linux" ] || die "This builder is intended to run on Linux."
 
-  for cmd in curl node npm npx python3 unzip make g++; do
+  for cmd in curl node npm npx python3 unzip make; do
     require_command "$cmd" || missing+=("$cmd")
   done
+
+  if [ -n "${CODEX_LINUX_CC:-}" ]; then
+    resolve_host_compiler CODEX_LINUX_CC "$CODEX_LINUX_CC" gcc >/dev/null
+  else
+    require_command gcc || missing+=("gcc")
+  fi
+
+  if [ -n "${CODEX_LINUX_CXX:-}" ]; then
+    resolve_host_compiler CODEX_LINUX_CXX "$CODEX_LINUX_CXX" g++ >/dev/null
+  else
+    require_command g++ || missing+=("g++")
+  fi
 
   detect_7zip || missing+=("7z or 7zz")
 
@@ -184,6 +198,27 @@ doctor_impl() {
 
   log "Dependency check passed."
   log "Using $SEVEN_ZIP_CMD, Node $(node -v), npm $(npm -v)."
+}
+
+resolve_host_compiler() {
+  local env_name="$1"
+  local override="$2"
+  local default_cmd="$3"
+  local resolved
+
+  if [ -n "$override" ]; then
+    if resolved="$(command -v "$override" 2>/dev/null)"; then
+      readlink -f "$resolved"
+      return
+    fi
+    if [ -x "$override" ]; then
+      readlink -f "$override"
+      return
+    fi
+    die "$env_name points to a compiler that is not executable or on PATH: $override"
+  fi
+
+  command -v "$default_cmd" || die "Could not find $default_cmd for native rebuild."
 }
 
 prepare_workdir() {
@@ -440,6 +475,8 @@ build_native_modules() {
   local better_version
   local better_build_version
   local pty_version
+  local native_cc
+  local native_cxx
 
   better_version="$(node -p "require(process.argv[1] + '/node_modules/better-sqlite3/package.json').version" "$extracted_asar_dir" 2>/dev/null || true)"
   pty_version="$(node -p "require(process.argv[1] + '/node_modules/node-pty/package.json').version" "$extracted_asar_dir" 2>/dev/null || true)"
@@ -447,6 +484,8 @@ build_native_modules() {
   [ -n "$pty_version" ] || die "Could not detect node-pty in the app bundle."
 
   better_build_version="$(resolve_better_sqlite3_version "$better_version" "$electron_version")"
+  native_cc="$(resolve_host_compiler CODEX_LINUX_CC "${CODEX_LINUX_CC:-}" gcc)"
+  native_cxx="$(resolve_host_compiler CODEX_LINUX_CXX "${CODEX_LINUX_CXX:-}" g++)"
   mkdir -p "$native_build_dir"
 
   cat >"$native_build_dir/package.json" <<EOF
@@ -457,11 +496,23 @@ EOF
   if [ "$better_build_version" != "$better_version" ]; then
     warn "Using better-sqlite3@$better_build_version for compatibility; upstream bundle contains $better_version."
   fi
+  log "Using native build compilers: CC=$native_cc CXX=$native_cxx."
 
   (
     cd "$native_build_dir"
-    run_logged "npm install for native rebuild" "$LOG_DIR/native-npm-install.log" npm install --ignore-scripts --no-audit --no-fund
-    npm_config_build_from_source=true run_logged "electron native rebuild" "$LOG_DIR/native-electron-rebuild.log" npx --yes @electron/rebuild -v "$electron_version" --force
+    run_logged "npm install for native rebuild" "$LOG_DIR/native-npm-install.log" env \
+      CC="$native_cc" \
+      CXX="$native_cxx" \
+      npm_config_cc="$native_cc" \
+      npm_config_cxx="$native_cxx" \
+      npm install --ignore-scripts --no-audit --no-fund
+    run_logged "electron native rebuild" "$LOG_DIR/native-electron-rebuild.log" env \
+      CC="$native_cc" \
+      CXX="$native_cxx" \
+      npm_config_cc="$native_cc" \
+      npm_config_cxx="$native_cxx" \
+      npm_config_build_from_source=true \
+      npx --yes @electron/rebuild -v "$electron_version" --force
   )
 
   [ -f "$(find "$native_build_dir/node_modules/better-sqlite3" -name 'better_sqlite3.node' -type f | head -n 1)" ] || die "better-sqlite3 rebuild did not produce better_sqlite3.node."
@@ -565,6 +616,10 @@ install_app_files() {
     icon_source="$(find "$INSTALL_DIR/content/webview/assets" -maxdepth 1 -type f -name 'app-*.png' | head -n 1 || true)"
     if [ -n "$icon_source" ]; then
       cp "$icon_source" "$INSTALL_DIR/codex.png"
+    fi
+
+    if [ -f "$INSTALL_DIR/content/webview/index.html" ]; then
+      sed -i 's/--startup-background: transparent/--startup-background: #1e1e1e/' "$INSTALL_DIR/content/webview/index.html"
     fi
   else
     warn "No webview directory found in the app bundle."
@@ -672,9 +727,8 @@ start_webview_server() {
   clear_stale_webview_pid
 
   if port_open; then
-    echo "Local webview port $WEBVIEW_PORT is already in use. Set CODEX_WEBVIEW_PORT to another port." >&2
-    launcher_log "Refused to start webview server; port $WEBVIEW_PORT is in use"
-    return 1
+    launcher_log "Local webview port $WEBVIEW_PORT is already in use; continuing with existing listener"
+    return 0
   fi
 
   launcher_log "Starting local webview server on 127.0.0.1:$WEBVIEW_PORT"
@@ -712,16 +766,44 @@ main() {
   export ELECTRON_FORCE_IS_PACKAGED=1
   export NODE_ENV=production
   export CHROME_DESKTOP="${CHROME_DESKTOP:-codex-for-linux.desktop}"
+  unset ELECTRON_RUN_AS_NODE
 
   start_webview_server
+
+  local ozone_platform="${CODEX_OZONE_PLATFORM:-}"
+  local ozone_platform_hint="${CODEX_OZONE_PLATFORM_HINT:-}"
+  local extra_flags=()
+
+  if [ -z "$ozone_platform" ]; then
+    if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+      ozone_platform="wayland"
+      ozone_platform_hint="wayland"
+    else
+      ozone_platform="x11"
+      ozone_platform_hint="x11"
+    fi
+  fi
+
+  if [ "$ozone_platform" = "wayland" ]; then
+    extra_flags+=(
+      "--enable-wayland-ime"
+      "--wayland-text-input-version=3"
+    )
+  else
+    # Bypass buggy IME on XWayland/X11 to restore typing (copy-paste only issue)
+    export GTK_IM_MODULE=xim
+    export QT_IM_MODULE=xim
+    export XMODIFIERS="@im=none"
+  fi
 
   "$SCRIPT_DIR/electron" \
     --no-sandbox \
     --class=codex-for-linux \
     --app-id=com.bulkheados.CodexForLinux \
-    --ozone-platform-hint=auto \
+    --ozone-platform="$ozone_platform" \
+    --ozone-platform-hint="$ozone_platform_hint" \
     --disable-gpu-sandbox \
-    --enable-features=WaylandWindowDecorations \
+    ${extra_flags[@]+"${extra_flags[@]}"} \
     "$@"
 }
 
@@ -752,7 +834,21 @@ install_desktop_entry() {
   fi
 
   cp "$temp_file" "$DESKTOP_FILE_PATH"
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$(dirname "$DESKTOP_FILE_PATH")" >/dev/null 2>&1 || true
+  fi
+  if command -v xdg-mime >/dev/null 2>&1; then
+    xdg-mime default "$(basename "$DESKTOP_FILE_PATH")" x-scheme-handler/codex >/dev/null 2>&1 || true
+  fi
   log "Desktop entry installed: $DESKTOP_FILE_PATH"
+}
+
+launch_command_hint() {
+  if command -v codex-linux >/dev/null 2>&1; then
+    printf 'codex-linux launch\n'
+  else
+    printf 'bash %q launch\n' "$SCRIPT_PATH"
+  fi
 }
 
 write_install_metadata() {
@@ -850,7 +946,7 @@ Desktop entry: $DESKTOP_FILE_PATH
 Runtime dir:   $INSTALL_DIR
 
 Start it with:
-  codex-linux launch
+  $(launch_command_hint)
 EOF
 }
 
