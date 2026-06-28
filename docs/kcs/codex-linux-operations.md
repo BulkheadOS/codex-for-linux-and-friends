@@ -36,6 +36,68 @@ Verification:
 bash bin/codex-linux status
 ```
 
+## Article: `codex:` links do not open the app
+
+Symptom: browser or terminal links using the `codex:` scheme do not open Codex
+for Linux.
+
+Cause: the desktop MIME database was not refreshed after installing or updating
+the launcher, or another Codex compatibility launcher still owns the scheme.
+
+Fix: reinstall the desktop entry and refresh the desktop database:
+
+```bash
+bash bin/codex-linux install
+update-desktop-database "${XDG_DATA_HOME:-$HOME/.local/share}/applications" 2>/dev/null || true
+xdg-mime default codex-for-linux.desktop x-scheme-handler/codex
+```
+
+Verification:
+
+```bash
+xdg-mime query default x-scheme-handler/codex
+```
+
+## Article: native rebuild looks for a missing compiler
+
+Symptom: install fails while rebuilding `better-sqlite3` or `node-pty`; the log
+mentions a compiler such as `g++-11: No such file or directory`.
+
+Cause: `node-gyp` generated a native build using a compiler name that is not
+installed on the host.
+
+Fix: use the compiler installed by the system build tools, or provide explicit
+compiler paths:
+
+```bash
+CODEX_LINUX_CC=/usr/bin/gcc CODEX_LINUX_CXX=/usr/bin/g++ bash bin/codex-linux install
+```
+
+Verification:
+
+```bash
+bash bin/codex-linux status
+```
+
+## Article: Appshots or Computer Use are missing on Linux
+
+Symptom: the app launches, but Appshots or Computer Use controls are missing or
+do not work on Linux.
+
+Cause: the compatibility layer runs the desktop app shell on Linux, but official
+Codex docs currently describe Appshots as macOS-only and Computer Use as
+macOS/Windows-only.
+
+Fix: do not treat this as an install failure. Use the core app, CLI, browser, and
+automation paths that are available in your account. Track upstream docs and only
+claim Linux support for these features after live verification.
+
+Verification:
+
+```bash
+bash bin/codex-linux status
+```
+
 ## Article: generated Flatpak bundle contains upstream app files
 
 Symptom: `dist/flatpak/codex-for-linux.flatpak` exists after local packaging.
@@ -57,11 +119,13 @@ Symptom: port 5175 remains busy after the app exits.
 Cause: launcher process was killed in a way that skipped cleanup, or another
 process is using the same port.
 
-Fix:
+Fix: recent launchers continue when the port is already in use, because older
+community launchers also bind this port. If the UI looks stale or mismatched,
+close the older launcher and clear the stale pid file:
 
 ```bash
 rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/codex-for-linux/webview.pid"
-CODEX_WEBVIEW_PORT=5176 bash bin/codex-linux launch
+bash bin/codex-linux launch
 ```
 
 Verification:

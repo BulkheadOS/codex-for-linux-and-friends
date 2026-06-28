@@ -104,6 +104,13 @@ You also need Node.js 20+ with `npm` and `npx`, plus an installed Codex CLI:
 npm i -g @openai/codex
 ```
 
+If your shell or Node toolchain points native builds at a missing compiler, set
+the compiler explicitly:
+
+```bash
+CODEX_LINUX_CC=/usr/bin/gcc CODEX_LINUX_CXX=/usr/bin/g++ bash bin/codex-linux install
+```
+
 ## Public safety model
 
 - no OpenAI app binaries are committed
@@ -136,6 +143,7 @@ Start with:
 - [DDD context map](docs/ddd/context-map.md)
 - [KCS support notes](docs/kcs/codex-linux-operations.md)
 - [Security model](docs/security-model.md)
+- [Feature parity notes](docs/feature-parity.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## Prior art

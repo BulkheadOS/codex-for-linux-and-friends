@@ -10,3 +10,4 @@ Categories=Development;
 StartupNotify=true
 StartupWMClass=codex-for-linux
 X-GNOME-UsesNotifications=true
+MimeType=x-scheme-handler/codex;

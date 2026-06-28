@@ -34,9 +34,9 @@ function fixture() {
   return root;
 }
 
-test("patches package metadata and native module loaders", () => {
+test("patches package metadata and native module loaders", async () => {
   const root = fixture();
-  patchCodexForLinux(root);
+  await patchCodexForLinux(root, { isTest: true });
 
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
   assert.equal(packageJson.desktopName, "codex-for-linux.desktop");
@@ -51,10 +51,10 @@ test("patches package metadata and native module loaders", () => {
   assert.match(nodePty, /codexForLinuxResolveNative/);
 });
 
-test("patcher is idempotent for marker-based patches", () => {
+test("patcher is idempotent for marker-based patches", async () => {
   const root = fixture();
-  patchCodexForLinux(root);
-  patchCodexForLinux(root);
+  await patchCodexForLinux(root, { isTest: true });
+  await patchCodexForLinux(root, { isTest: true });
 
   const bootstrap = fs.readFileSync(path.join(root, ".vite/build/bootstrap.js"), "utf8");
   const matches = bootstrap.match(/codexForLinuxPatchedOwlFeatures/g) || [];

@@ -32,3 +32,10 @@ is useful only if it preserves that path and does not create redistribution risk
 
 Assume users will copy commands literally. Keep examples safe, reversible where
 possible, and clear about what is local versus redistributable.
+
+## Feature honesty
+
+Meet or exceed existing Linux ports on the parts we can own: install, update,
+launch, native modules, desktop integration, and safe diagnostics. Mark upstream
+features as unsupported or best-effort when they depend on macOS, Windows, account
+flags, or GUI state this project cannot verify.

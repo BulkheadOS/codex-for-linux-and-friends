@@ -6,5 +6,6 @@ cd "$ROOT"
 
 node --test tests/*.test.mjs
 bash tests/smoke.test.sh
+bash tests/runtime-selection.test.sh
 bash tests/desktop.test.sh
 bash scripts/qa-public-safety.sh

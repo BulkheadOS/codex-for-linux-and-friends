@@ -10,5 +10,8 @@
     "lint:desktop": "bash tests/desktop.test.sh",
     "qa:public": "bash scripts/qa-public-safety.sh"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "acorn": "^8.17.0"
+  }
 }
