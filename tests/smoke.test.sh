@@ -4,6 +4,13 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+unset CODEX_INOTIFY_PRESSURE_ALLOW_UNSAFE
+unset CODEX_INOTIFY_GUARD_THRESHOLD_PERCENT
+unset CODEX_LINUX_INOTIFY_USAGE_FIXTURE
+unset CODEX_LINUX_INOTIFY_LIMITS_FIXTURE
+export CODEX_LINUX_INOTIFY_USAGE_FIXTURE='0 0'
+export CODEX_LINUX_INOTIFY_LIMITS_FIXTURE='1000 1000'
+
 tmp_launcher_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_launcher_dir"' EXIT
 
@@ -62,7 +69,15 @@ if (value.runtimeHealth?.webviewPort?.port !== 5175) process.exit(1);
 if (!["open", "closed", "unknown"].includes(value.runtimeHealth?.webviewPort?.status)) process.exit(1);
 if (value.runtimeHealth?.inotify?.maxUserInstances !== null && typeof value.runtimeHealth?.inotify?.maxUserInstances !== "number") process.exit(1);
 if (value.runtimeHealth?.inotify?.maxUserWatches !== null && typeof value.runtimeHealth?.inotify?.maxUserWatches !== "number") process.exit(1);
+if (value.runtimeHealth?.inotify?.userInstances !== null && typeof value.runtimeHealth?.inotify?.userInstances !== "number") process.exit(1);
+if (value.runtimeHealth?.inotify?.userWatches !== null && typeof value.runtimeHealth?.inotify?.userWatches !== "number") process.exit(1);
+if (value.runtimeHealth?.inotify?.instanceUsagePercent !== null && typeof value.runtimeHealth?.inotify?.instanceUsagePercent !== "number") process.exit(1);
+if (value.runtimeHealth?.inotify?.watchUsagePercent !== null && typeof value.runtimeHealth?.inotify?.watchUsagePercent !== "number") process.exit(1);
 if (typeof value.runtimeHealth?.inotify?.codexRelatedFdCount !== "number") process.exit(1);
+if (!["ok", "warning", "blocked", "override-active", "unknown"].includes(value.runtimeHealth?.inotify?.pressure?.status)) process.exit(1);
+if (value.runtimeHealth?.inotify?.pressure?.guardThresholdPercent !== 90) process.exit(1);
+if (typeof value.runtimeHealth?.inotify?.pressure?.override !== "boolean") process.exit(1);
+if (value.runtimeHealth?.inotify?.pressure?.status !== "ok") process.exit(1);
 ' "$diagnostics_json"
 
 watch_override_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_LINUX_RECURSIVE_WATCH=1 CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
@@ -78,6 +93,53 @@ const value = JSON.parse(process.argv[1]);
 if (value.runtimeHealth.webviewPort.port !== 5176) process.exit(1);
 if (!["open", "closed", "unknown"].includes(value.runtimeHealth.webviewPort.status)) process.exit(1);
 ' "$custom_port_json"
+
+high_inotify_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_LINUX_INOTIFY_USAGE_FIXTURE='91 660' CODEX_LINUX_INOTIFY_LIMITS_FIXTURE='100 1000' CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.runtimeHealth.inotify.userInstances !== 91) process.exit(1);
+if (value.runtimeHealth.inotify.userWatches !== 660) process.exit(1);
+if (value.runtimeHealth.inotify.instanceUsagePercent !== 91) process.exit(1);
+if (value.runtimeHealth.inotify.watchUsagePercent !== 66) process.exit(1);
+if (value.runtimeHealth.inotify.pressure.status !== "blocked") process.exit(1);
+if (value.runtimeHealth.inotify.pressure.override !== false) process.exit(1);
+' "$high_inotify_json"
+
+near_threshold_inotify_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_LINUX_INOTIFY_USAGE_FIXTURE='899 0' CODEX_LINUX_INOTIFY_LIMITS_FIXTURE='1000 1000' CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.runtimeHealth.inotify.instanceUsagePercent !== 89) process.exit(1);
+if (value.runtimeHealth.inotify.pressure.status === "blocked") process.exit(1);
+' "$near_threshold_inotify_json"
+
+exact_threshold_inotify_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_LINUX_INOTIFY_USAGE_FIXTURE='900 0' CODEX_LINUX_INOTIFY_LIMITS_FIXTURE='1000 1000' CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.runtimeHealth.inotify.instanceUsagePercent !== 90) process.exit(1);
+if (value.runtimeHealth.inotify.pressure.status !== "blocked") process.exit(1);
+' "$exact_threshold_inotify_json"
+
+partial_unknown_inotify_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_LINUX_INOTIFY_USAGE_FIXTURE='0 10' CODEX_LINUX_INOTIFY_LIMITS_FIXTURE='unknown 1000' CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.runtimeHealth.inotify.instanceUsagePercent !== null) process.exit(1);
+if (value.runtimeHealth.inotify.watchUsagePercent !== 1) process.exit(1);
+if (value.runtimeHealth.inotify.pressure.status !== "warning") process.exit(1);
+' "$partial_unknown_inotify_json"
+
+leading_zero_threshold_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_INOTIFY_GUARD_THRESHOLD_PERCENT=090 CODEX_LINUX_INOTIFY_USAGE_FIXTURE='90 0' CODEX_LINUX_INOTIFY_LIMITS_FIXTURE='100 1000' CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.runtimeHealth.inotify.pressure.guardThresholdPercent !== 90) process.exit(1);
+if (value.runtimeHealth.inotify.pressure.status !== "blocked") process.exit(1);
+' "$leading_zero_threshold_json"
+
+override_inotify_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_INOTIFY_PRESSURE_ALLOW_UNSAFE=1 CODEX_LINUX_INOTIFY_USAGE_FIXTURE='91 660' CODEX_LINUX_INOTIFY_LIMITS_FIXTURE='100 1000' CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.runtimeHealth.inotify.pressure.status !== "override-active") process.exit(1);
+if (value.runtimeHealth.inotify.pressure.override !== true) process.exit(1);
+' "$override_inotify_json"
 
 missing_kde_override_json="$(
   env \
@@ -180,6 +242,13 @@ fi
 
 if ! grep -q 'Unsafe maintainer-only KDE Wayland crash-guard override' bin/codex-linux; then
   echo "launcher help must label the KDE Wayland override as unsafe maintainer-only testing" >&2
+  exit 1
+fi
+
+if ! grep -q 'CODEX_INOTIFY_PRESSURE_ALLOW_UNSAFE' bin/codex-linux ||
+   ! grep -q 'CODEX_INOTIFY_GUARD_THRESHOLD_PERCENT' bin/codex-linux ||
+   ! grep -q 'block_inotify_pressure_launch' bin/codex-linux; then
+  echo "launcher must guard high inotify pressure behind an explicit unsafe override" >&2
   exit 1
 fi
 
@@ -318,6 +387,55 @@ case "$legacy_launch_output" in
   *"legacy launcher ran"* ) echo "legacy runtime launcher must not execute on KDE Wayland" >&2; exit 1 ;;
 esac
 
+inotify_guard_dir="$tmp_launcher_dir/inotify-guard-runtime"
+mkdir -p "$inotify_guard_dir"
+cat >"$inotify_guard_dir/metadata.json" <<'EOF'
+{
+  "appVersion": "99.0.0-test",
+  "electronVersion": "42.1.0-test"
+}
+EOF
+cat >"$inotify_guard_dir/start.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "inotify guard test launcher ran" >&2
+exit 23
+EOF
+chmod +x "$inotify_guard_dir/start.sh"
+
+if inotify_guard_output="$(
+  env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY \
+  CODEX_LINUX_INSTALL_DIR="$inotify_guard_dir" \
+  CODEX_LINUX_INOTIFY_USAGE_FIXTURE='90 100' \
+  CODEX_LINUX_INOTIFY_LIMITS_FIXTURE='100 1000' \
+  bin/codex-linux launch 2>&1
+)"; then
+  echo "codex-linux launch must refuse high inotify pressure before running the installed launcher" >&2
+  exit 1
+fi
+case "$inotify_guard_output" in
+  *"refused to launch because inotify usage is already at or above 90%"* ) ;;
+  * ) echo "inotify pressure guard did not print the expected refusal message" >&2; exit 1 ;;
+esac
+case "$inotify_guard_output" in
+  *"inotify guard test launcher ran"* ) echo "inotify pressure guard must stop before installed launcher execution" >&2; exit 1 ;;
+esac
+
+inotify_override_output="$(
+  env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY \
+  CODEX_LINUX_INSTALL_DIR="$inotify_guard_dir" \
+  CODEX_INOTIFY_PRESSURE_ALLOW_UNSAFE=1 \
+  CODEX_LINUX_INOTIFY_USAGE_FIXTURE='90 100' \
+  CODEX_LINUX_INOTIFY_LIMITS_FIXTURE='100 1000' \
+  bin/codex-linux launch 2>&1 || true
+)"
+case "$inotify_override_output" in
+  *"inotify guard test launcher ran"* ) ;;
+  * )
+  echo "inotify pressure unsafe override should allow the installed launcher to run" >&2
+  exit 1
+  ;;
+esac
+
 diagnostics_install_dir="$tmp_launcher_dir/diagnostics-runtime"
 mkdir -p "$diagnostics_install_dir"
 cat >"$diagnostics_install_dir/metadata.json" <<'EOF'
@@ -397,6 +515,30 @@ if (value.launchSafety.status !== "unsafe-override") process.exit(1);
 if (value.features.automations.status !== "unsafe-override") process.exit(1);
 ' "$kde_override_diagnostics_json"
 
+kde_override_high_inotify_json="$(
+  env \
+  CODEX_LINUX_INSTALL_DIR="$diagnostics_install_dir" \
+  CODEX_KWIN_ALLOW_UNSAFE=1 \
+  CODEX_LINUX_INOTIFY_USAGE_FIXTURE='90 0' \
+  CODEX_LINUX_INOTIFY_LIMITS_FIXTURE='100 1000' \
+  KDE_FULL_SESSION=true \
+  KDE_SESSION_VERSION=6 \
+  XDG_SESSION_TYPE=wayland \
+  XDG_CURRENT_DESKTOP=KDE \
+  XDG_SESSION_DESKTOP=KDE \
+  DESKTOP_SESSION=plasma \
+  bin/codex-linux diagnostics --json
+)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.installed !== true) process.exit(1);
+if (value.session !== "KDE Wayland") process.exit(1);
+if (value.runtimeHealth.inotify.pressure.status !== "blocked") process.exit(1);
+if (value.launchSafety.status !== "blocked") process.exit(1);
+if (!value.launchSafety.detail.includes("inotify usage")) process.exit(1);
+if (value.features.automations.status !== "blocked") process.exit(1);
+' "$kde_override_high_inotify_json"
+
 rm -f "$tmp_launcher_dir/electron.args"
 if guard_output="$(
   env \
@@ -424,6 +566,49 @@ if [ -f "$tmp_launcher_dir/electron.args" ]; then
   exit 1
 fi
 
+rm -f "$tmp_launcher_dir/electron.args"
+if inotify_launcher_output="$(
+  env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION \
+  HOME="$tmp_launcher_dir/home" \
+  XDG_STATE_HOME="$tmp_launcher_dir/state" \
+  XDG_CACHE_HOME="$tmp_launcher_dir/cache" \
+  CODEX_CLI_PATH=/bin/true \
+  CODEX_LINUX_INOTIFY_USAGE_FIXTURE='90 100' \
+  CODEX_LINUX_INOTIFY_LIMITS_FIXTURE='100 1000' \
+  XDG_SESSION_TYPE=wayland \
+  XDG_CURRENT_DESKTOP=GNOME \
+  "$tmp_launcher_dir/start.sh" 2>&1
+)"; then
+  echo "generated launcher must refuse high inotify pressure before Electron starts" >&2
+  exit 1
+fi
+case "$inotify_launcher_output" in
+  *"refused to launch because inotify usage is already at or above 90%"* ) ;;
+  * ) echo "generated inotify pressure guard did not print the expected refusal message" >&2; exit 1 ;;
+esac
+if [ -f "$tmp_launcher_dir/electron.args" ]; then
+  echo "generated inotify pressure guard must stop before Electron starts" >&2
+  exit 1
+fi
+
+rm -f "$tmp_launcher_dir/electron.args"
+env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION \
+HOME="$tmp_launcher_dir/home" \
+XDG_STATE_HOME="$tmp_launcher_dir/state" \
+XDG_CACHE_HOME="$tmp_launcher_dir/cache" \
+CODEX_CLI_PATH=/bin/true \
+CODEX_INOTIFY_PRESSURE_ALLOW_UNSAFE=1 \
+CODEX_LINUX_INOTIFY_USAGE_FIXTURE='90 100' \
+CODEX_LINUX_INOTIFY_LIMITS_FIXTURE='100 1000' \
+XDG_SESSION_TYPE=wayland \
+XDG_CURRENT_DESKTOP=GNOME \
+"$tmp_launcher_dir/start.sh"
+if [ ! -f "$tmp_launcher_dir/electron.args" ]; then
+  echo "generated launcher inotify unsafe override should allow Electron to start" >&2
+  exit 1
+fi
+
+rm -f "$tmp_launcher_dir/electron.args"
 env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION \
 HOME="$tmp_launcher_dir/home" \
 XDG_STATE_HOME="$tmp_launcher_dir/state" \

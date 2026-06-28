@@ -299,8 +299,20 @@ most of the default `fs.inotify.max_user_watches` limit.
 
 Fix: rebuild with a patcher version that disables recursive `fs.watch` on Linux
 by default. This keeps small `.git` metadata watchers but avoids recursively
-watching every project path. If a user explicitly wants upstream recursive
-watching and has raised their inotify limits, launch with:
+watching every project path. Current launchers also refuse to start when the
+current user's inotify instance or watch usage is already at or above the guard
+threshold, which defaults to 90%. Close other file-watching apps or raise
+`fs.inotify.max_user_instances` and `fs.inotify.max_user_watches`, then retry.
+
+If a maintainer is deliberately testing a high-pressure session, use the unsafe
+override:
+
+```bash
+CODEX_INOTIFY_PRESSURE_ALLOW_UNSAFE=1 codex-linux launch
+```
+
+If a user explicitly wants upstream recursive watching and has raised their
+inotify limits, launch with:
 
 ```bash
 CODEX_LINUX_RECURSIVE_WATCH=1 codex-linux launch

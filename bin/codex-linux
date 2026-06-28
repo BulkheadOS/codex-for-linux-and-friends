@@ -96,6 +96,10 @@ Environment:
   CODEX_KDE_WAYLAND_ALLOW_UNSAFE
                               Unsafe maintainer-only KDE Wayland crash-guard override.
   CODEX_KWIN_ALLOW_UNSAFE     Alias for CODEX_KDE_WAYLAND_ALLOW_UNSAFE.
+  CODEX_INOTIFY_PRESSURE_ALLOW_UNSAFE
+                              Unsafe maintainer-only override for high inotify pressure.
+  CODEX_INOTIFY_GUARD_THRESHOLD_PERCENT
+                              Inotify pressure launch guard threshold, default 90.
   CODEX_WEBVIEW_PORT          Local webview helper port, default 5175.
   CODEX_LINUX_OUTPUT_ROOT     Runtime output root.
   CODEX_LINUX_INSTALL_DIR     Runtime install directory.
@@ -266,6 +270,20 @@ host_kde_wayland_unsafe_allowed() {
   [ "${CODEX_KDE_WAYLAND_ALLOW_UNSAFE:-0}" = "1" ] || [ "${CODEX_KWIN_ALLOW_UNSAFE:-0}" = "1" ]
 }
 
+diagnostic_is_unsigned_integer() {
+  case "${1:-}" in
+    ""|*[!0-9]*)
+      return 1
+      ;;
+    0|[1-9]*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 diagnostic_runtime_process_counts() {
   local electron_count=0
   local crashpad_count=0
@@ -345,42 +363,230 @@ NODE
 
 diagnostic_read_inotify_limit() {
   local file="$1"
+  local value
 
   if [ -r "$file" ]; then
-    tr -d '[:space:]' <"$file"
-  else
-    printf 'unknown'
+    value="$(tr -d '[:space:]' <"$file")"
+    if diagnostic_is_unsigned_integer "$value"; then
+      printf '%s\n' "$value"
+      return
+    fi
   fi
+
+  printf 'unknown\n'
+}
+
+diagnostic_inotify_limits() {
+  if [ -n "${CODEX_LINUX_INOTIFY_LIMITS_FIXTURE:-}" ]; then
+    printf '%s\n' "$CODEX_LINUX_INOTIFY_LIMITS_FIXTURE"
+    return
+  fi
+
+  printf '%s %s\n' \
+    "$(diagnostic_read_inotify_limit /proc/sys/fs/inotify/max_user_instances)" \
+    "$(diagnostic_read_inotify_limit /proc/sys/fs/inotify/max_user_watches)"
+}
+
+diagnostic_current_user_inotify_usage() {
+  local user_uid
+  local instances=0
+  local watches=0
+  local fd
+  local fdinfo
+  local watch_count
+
+  if [ -n "${CODEX_LINUX_INOTIFY_USAGE_FIXTURE:-}" ]; then
+    printf '%s\n' "$CODEX_LINUX_INOTIFY_USAGE_FIXTURE"
+    return
+  fi
+
+  if ! command -v find >/dev/null 2>&1 || ! command -v awk >/dev/null 2>&1; then
+    printf 'unknown unknown\n'
+    return
+  fi
+
+  user_uid="$(id -u 2>/dev/null || printf '')"
+  [ -n "$user_uid" ] || {
+    printf 'unknown unknown\n'
+    return
+  }
+
+  while IFS= read -r fd; do
+    [ -n "$fd" ] || continue
+    instances=$((instances + 1))
+    fdinfo="${fd/\/fd\//\/fdinfo\/}"
+    if [ -r "$fdinfo" ]; then
+      watch_count="$(awk 'BEGIN { count = 0 } /^inotify/ { count++ } END { print count }' "$fdinfo" 2>/dev/null || printf '0')"
+      if diagnostic_is_unsigned_integer "$watch_count"; then
+        watches=$((watches + watch_count))
+      fi
+    fi
+  done < <(find /proc/[0-9]*/fd -maxdepth 1 -user "$user_uid" -lname 'anon_inode:inotify' -print 2>/dev/null || true)
+
+  printf '%s %s\n' "$instances" "$watches"
+}
+
+diagnostic_usage_percent() {
+  local used="$1"
+  local limit="$2"
+
+  if ! diagnostic_is_unsigned_integer "$used" || ! diagnostic_is_unsigned_integer "$limit" || [ "$limit" -le 0 ]; then
+    printf 'unknown\n'
+    return
+  fi
+
+  printf '%s\n' $(( (used * 100) / limit ))
+}
+
+diagnostic_usage_meets_percent() {
+  local used="$1"
+  local limit="$2"
+  local threshold="$3"
+
+  if ! diagnostic_is_unsigned_integer "$used" ||
+     ! diagnostic_is_unsigned_integer "$limit" ||
+     ! diagnostic_is_unsigned_integer "$threshold" ||
+     [ "$limit" -le 0 ]; then
+    return 1
+  fi
+
+  [ $((used * 100)) -ge $((threshold * limit)) ]
+}
+
+inotify_guard_threshold_percent() {
+  local threshold="${CODEX_INOTIFY_GUARD_THRESHOLD_PERCENT:-90}"
+
+  if ! diagnostic_is_unsigned_integer "$threshold" || [ "$threshold" -lt 1 ] || [ "$threshold" -gt 100 ]; then
+    threshold=90
+  fi
+
+  printf '%s\n' "$threshold"
+}
+
+inotify_pressure_unsafe_allowed() {
+  [ "${CODEX_INOTIFY_PRESSURE_ALLOW_UNSAFE:-0}" = "1" ]
+}
+
+diagnostic_inotify_pressure_status() {
+  local user_instances="$1"
+  local max_user_instances="$2"
+  local user_watches="$3"
+  local max_user_watches="$4"
+  local instance_percent="$5"
+  local watch_percent="$6"
+  local threshold="$7"
+  local warning_threshold
+  local max_percent=0
+  local instance_unknown=0
+  local watch_unknown=0
+
+  if diagnostic_is_unsigned_integer "$instance_percent"; then
+    if [ "$instance_percent" -gt "$max_percent" ]; then
+      max_percent="$instance_percent"
+    fi
+  else
+    instance_unknown=1
+  fi
+  if diagnostic_is_unsigned_integer "$watch_percent"; then
+    if [ "$watch_percent" -gt "$max_percent" ]; then
+      max_percent="$watch_percent"
+    fi
+  else
+    watch_unknown=1
+  fi
+
+  if diagnostic_usage_meets_percent "$user_instances" "$max_user_instances" "$threshold" ||
+     diagnostic_usage_meets_percent "$user_watches" "$max_user_watches" "$threshold"; then
+    if inotify_pressure_unsafe_allowed; then
+      printf 'override-active\n'
+    else
+      printf 'blocked\n'
+    fi
+    return
+  fi
+
+  if [ "$instance_unknown" -eq 1 ] && [ "$watch_unknown" -eq 1 ]; then
+    printf 'unknown\n'
+    return
+  fi
+
+  warning_threshold=$((threshold - 15))
+  [ "$warning_threshold" -lt 1 ] && warning_threshold=1
+  if [ "$instance_unknown" -eq 1 ] || [ "$watch_unknown" -eq 1 ] || [ "$max_percent" -ge "$warning_threshold" ]; then
+    printf 'warning\n'
+    return
+  fi
+
+  printf 'ok\n'
+}
+
+block_inotify_pressure_launch() {
+  local usage
+  local limits
+  local user_instances="unknown"
+  local user_watches="unknown"
+  local max_user_instances="unknown"
+  local max_user_watches="unknown"
+  local instance_percent="unknown"
+  local watch_percent="unknown"
+  local threshold
+  local pressure_status
+
+  threshold="$(inotify_guard_threshold_percent)"
+  usage="$(diagnostic_current_user_inotify_usage)"
+  limits="$(diagnostic_inotify_limits)"
+  read -r user_instances user_watches <<<"$usage"
+  read -r max_user_instances max_user_watches <<<"$limits"
+  instance_percent="$(diagnostic_usage_percent "$user_instances" "$max_user_instances")"
+  watch_percent="$(diagnostic_usage_percent "$user_watches" "$max_user_watches")"
+  pressure_status="$(diagnostic_inotify_pressure_status "$user_instances" "$max_user_instances" "$user_watches" "$max_user_watches" "$instance_percent" "$watch_percent" "$threshold")"
+
+  if [ "$pressure_status" != "blocked" ]; then
+    return 0
+  fi
+
+  echo "Codex for Linux refused to launch because inotify usage is already at or above ${threshold}%." >&2
+  echo "Current user usage: instances=$user_instances/$max_user_instances (${instance_percent}%), watches=$user_watches/$max_user_watches (${watch_percent}%)." >&2
+  echo "Close other file-watching apps or raise fs.inotify limits, then retry." >&2
+  echo "Set CODEX_INOTIFY_PRESSURE_ALLOW_UNSAFE=1 only for controlled maintainer testing." >&2
+  return 1
 }
 
 diagnostic_codex_inotify_fd_count() {
   local count=0
-  local proc
   local fd
-  local target
+  local pid
   local cmdline
+  local user_uid
 
-  for proc in /proc/[0-9]*; do
-    [ -d "$proc/fd" ] || continue
-    [ -r "$proc/cmdline" ] || continue
-    cmdline="$(tr '\0' ' ' <"$proc/cmdline" 2>/dev/null || true)"
+  if ! command -v find >/dev/null 2>&1; then
+    printf '0\n'
+    return
+  fi
+
+  user_uid="$(id -u 2>/dev/null || printf '')"
+  [ -n "$user_uid" ] || {
+    printf '0\n'
+    return
+  }
+
+  while IFS= read -r fd; do
+    [ -n "$fd" ] || continue
+    pid="${fd#/proc/}"
+    pid="${pid%%/*}"
+    [ -r "/proc/$pid/cmdline" ] || continue
+    cmdline="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
     [ -n "$cmdline" ] || continue
 
     case "$cmdline" in
       *"$INSTALL_DIR/"*|*"codex-for-linux"*|*"CodexForLinux"*)
-        ;;
-      *)
+        count=$((count + 1))
         continue
         ;;
+      *)
+        ;;
     esac
-
-    for fd in "$proc"/fd/*; do
-      target="$(readlink "$fd" 2>/dev/null || true)"
-      if [ "$target" = "anon_inode:inotify" ]; then
-        count=$((count + 1))
-      fi
-    done
-  done
+  done < <(find /proc/[0-9]*/fd -maxdepth 1 -user "$user_uid" -lname 'anon_inode:inotify' -print 2>/dev/null || true)
 
   printf '%s\n' "$count"
 }
@@ -404,9 +610,17 @@ diagnostics_impl() {
   local runtime_webview_count=0
   local webview_port="${CODEX_WEBVIEW_PORT:-5175}"
   local webview_port_status="unknown"
+  local inotify_usage
+  local inotify_limits
+  local inotify_user_instances="unknown"
+  local inotify_user_watches="unknown"
   local inotify_max_user_instances="unknown"
   local inotify_max_user_watches="unknown"
+  local inotify_instance_usage_percent="unknown"
+  local inotify_watch_usage_percent="unknown"
   local inotify_codex_fd_count=0
+  local inotify_guard_threshold
+  local inotify_pressure_status
 
   if [ "${CODEX_LINUX_RECURSIVE_WATCH:-0}" = "1" ]; then
     file_watch_status="override-active"
@@ -453,12 +667,30 @@ diagnostics_impl() {
   runtime_process_counts="$(diagnostic_runtime_process_counts)"
   read -r runtime_electron_count runtime_crashpad_count runtime_webview_count <<<"$runtime_process_counts"
   webview_port_status="$(diagnostic_webview_port_status)"
-  inotify_max_user_instances="$(diagnostic_read_inotify_limit /proc/sys/fs/inotify/max_user_instances)"
-  inotify_max_user_watches="$(diagnostic_read_inotify_limit /proc/sys/fs/inotify/max_user_watches)"
+  inotify_usage="$(diagnostic_current_user_inotify_usage)"
+  inotify_limits="$(diagnostic_inotify_limits)"
+  read -r inotify_user_instances inotify_user_watches <<<"$inotify_usage"
+  read -r inotify_max_user_instances inotify_max_user_watches <<<"$inotify_limits"
+  inotify_instance_usage_percent="$(diagnostic_usage_percent "$inotify_user_instances" "$inotify_max_user_instances")"
+  inotify_watch_usage_percent="$(diagnostic_usage_percent "$inotify_user_watches" "$inotify_max_user_watches")"
+  inotify_guard_threshold="$(inotify_guard_threshold_percent)"
+  inotify_pressure_status="$(diagnostic_inotify_pressure_status "$inotify_user_instances" "$inotify_max_user_instances" "$inotify_user_watches" "$inotify_max_user_watches" "$inotify_instance_usage_percent" "$inotify_watch_usage_percent" "$inotify_guard_threshold")"
   inotify_codex_fd_count="$(diagnostic_codex_inotify_fd_count)"
 
+  if [ "$installed" = "yes" ] && [ "$launch_status" != "blocked" ] && [ "$inotify_pressure_status" = "blocked" ]; then
+    launch_status="blocked"
+    launch_detail="inotify usage is at or above ${inotify_guard_threshold}%; close file watchers or raise limits before launch"
+    automations_status="blocked"
+    automations_detail="inotify pressure guard blocks launch until file-watch capacity is available"
+  elif [ "$installed" = "yes" ] && [ "$launch_status" = "session-clear" ] && [ "$inotify_pressure_status" = "override-active" ]; then
+    launch_status="unsafe-override"
+    launch_detail="inotify pressure override is set; monitor file-watch capacity during launch"
+    automations_status="unsafe-override"
+    automations_detail="automation testing is possible only with the inotify pressure override"
+  fi
+
   if [ "$PRINT_JSON" -eq 1 ]; then
-    node - "$installed" "$app_version" "$electron_version" "$session_label" "$launch_status" "$launch_detail" "$automations_status" "$automations_detail" "$file_watch_status" "$file_watch_detail" "$runtime_electron_count" "$runtime_crashpad_count" "$runtime_webview_count" "$webview_port" "$webview_port_status" "$inotify_max_user_instances" "$inotify_max_user_watches" "$inotify_codex_fd_count" <<'NODE'
+    node - "$installed" "$app_version" "$electron_version" "$session_label" "$launch_status" "$launch_detail" "$automations_status" "$automations_detail" "$file_watch_status" "$file_watch_detail" "$runtime_electron_count" "$runtime_crashpad_count" "$runtime_webview_count" "$webview_port" "$webview_port_status" "$inotify_max_user_instances" "$inotify_max_user_watches" "$inotify_codex_fd_count" "$inotify_user_instances" "$inotify_user_watches" "$inotify_instance_usage_percent" "$inotify_watch_usage_percent" "$inotify_guard_threshold" "$inotify_pressure_status" "$(inotify_pressure_unsafe_allowed && printf true || printf false)" <<'NODE'
 const [
   installed,
   appVersion,
@@ -478,6 +710,13 @@ const [
   inotifyMaxUserInstances,
   inotifyMaxUserWatches,
   inotifyCodexFdCount,
+  inotifyUserInstances,
+  inotifyUserWatches,
+  inotifyInstanceUsagePercent,
+  inotifyWatchUsagePercent,
+  inotifyGuardThreshold,
+  inotifyPressureStatus,
+  inotifyPressureOverride,
 ] = process.argv.slice(2);
 
 function maybeNumber(value) {
@@ -524,7 +763,16 @@ console.log(JSON.stringify({
     inotify: {
       maxUserInstances: maybeNumber(inotifyMaxUserInstances),
       maxUserWatches: maybeNumber(inotifyMaxUserWatches),
+      userInstances: maybeNumber(inotifyUserInstances),
+      userWatches: maybeNumber(inotifyUserWatches),
+      instanceUsagePercent: maybeNumber(inotifyInstanceUsagePercent),
+      watchUsagePercent: maybeNumber(inotifyWatchUsagePercent),
       codexRelatedFdCount: maybeNumber(inotifyCodexFdCount),
+      pressure: {
+        status: inotifyPressureStatus,
+        guardThresholdPercent: maybeNumber(inotifyGuardThreshold),
+        override: inotifyPressureOverride === "true",
+      },
     },
   },
 }, null, 2));
@@ -553,7 +801,7 @@ Runtime safety:
 Runtime health:
   Processes: electron=$runtime_electron_count crashpad=$runtime_crashpad_count webview=$runtime_webview_count
   Webview port: $webview_port $webview_port_status
-  Inotify: max_user_instances=$inotify_max_user_instances max_user_watches=$inotify_max_user_watches codex_related_fds=$inotify_codex_fd_count
+  Inotify: max_user_instances=$inotify_max_user_instances max_user_watches=$inotify_max_user_watches user_instances=$inotify_user_instances user_watches=$inotify_user_watches instance_usage=${inotify_instance_usage_percent}% watch_usage=${inotify_watch_usage_percent}% pressure=$inotify_pressure_status threshold=${inotify_guard_threshold}% codex_related_fds=$inotify_codex_fd_count
 EOF
 }
 
@@ -1251,6 +1499,168 @@ kde_wayland_unsafe_allowed() {
   [ "${CODEX_KDE_WAYLAND_ALLOW_UNSAFE:-0}" = "1" ] || [ "${CODEX_KWIN_ALLOW_UNSAFE:-0}" = "1" ]
 }
 
+is_unsigned_integer() {
+  case "${1:-}" in
+    ""|*[!0-9]*)
+      return 1
+      ;;
+    0|[1-9]*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+read_inotify_limit() {
+  local file="$1"
+  local value
+
+  if [ -r "$file" ]; then
+    value="$(tr -d '[:space:]' <"$file")"
+    if is_unsigned_integer "$value"; then
+      printf '%s\n' "$value"
+      return
+    fi
+  fi
+
+  printf 'unknown\n'
+}
+
+inotify_limits() {
+  if [ -n "${CODEX_LINUX_INOTIFY_LIMITS_FIXTURE:-}" ]; then
+    printf '%s\n' "$CODEX_LINUX_INOTIFY_LIMITS_FIXTURE"
+    return
+  fi
+
+  printf '%s %s\n' \
+    "$(read_inotify_limit /proc/sys/fs/inotify/max_user_instances)" \
+    "$(read_inotify_limit /proc/sys/fs/inotify/max_user_watches)"
+}
+
+current_user_inotify_usage() {
+  local user_uid
+  local instances=0
+  local watches=0
+  local fd
+  local fdinfo
+  local watch_count
+
+  if [ -n "${CODEX_LINUX_INOTIFY_USAGE_FIXTURE:-}" ]; then
+    printf '%s\n' "$CODEX_LINUX_INOTIFY_USAGE_FIXTURE"
+    return
+  fi
+
+  if ! command -v find >/dev/null 2>&1 || ! command -v awk >/dev/null 2>&1; then
+    printf 'unknown unknown\n'
+    return
+  fi
+
+  user_uid="$(id -u 2>/dev/null || printf '')"
+  [ -n "$user_uid" ] || {
+    printf 'unknown unknown\n'
+    return
+  }
+
+  while IFS= read -r fd; do
+    [ -n "$fd" ] || continue
+    instances=$((instances + 1))
+    fdinfo="${fd/\/fd\//\/fdinfo\/}"
+    if [ -r "$fdinfo" ]; then
+      watch_count="$(awk 'BEGIN { count = 0 } /^inotify/ { count++ } END { print count }' "$fdinfo" 2>/dev/null || printf '0')"
+      if is_unsigned_integer "$watch_count"; then
+        watches=$((watches + watch_count))
+      fi
+    fi
+  done < <(find /proc/[0-9]*/fd -maxdepth 1 -user "$user_uid" -lname 'anon_inode:inotify' -print 2>/dev/null || true)
+
+  printf '%s %s\n' "$instances" "$watches"
+}
+
+usage_percent() {
+  local used="$1"
+  local limit="$2"
+
+  if ! is_unsigned_integer "$used" || ! is_unsigned_integer "$limit" || [ "$limit" -le 0 ]; then
+    printf 'unknown\n'
+    return
+  fi
+
+  printf '%s\n' $(( (used * 100) / limit ))
+}
+
+usage_meets_percent() {
+  local used="$1"
+  local limit="$2"
+  local threshold="$3"
+
+  if ! is_unsigned_integer "$used" ||
+     ! is_unsigned_integer "$limit" ||
+     ! is_unsigned_integer "$threshold" ||
+     [ "$limit" -le 0 ]; then
+    return 1
+  fi
+
+  [ $((used * 100)) -ge $((threshold * limit)) ]
+}
+
+inotify_guard_threshold_percent() {
+  local threshold="${CODEX_INOTIFY_GUARD_THRESHOLD_PERCENT:-90}"
+
+  if ! is_unsigned_integer "$threshold" || [ "$threshold" -lt 1 ] || [ "$threshold" -gt 100 ]; then
+    threshold=90
+  fi
+
+  printf '%s\n' "$threshold"
+}
+
+inotify_pressure_unsafe_allowed() {
+  [ "${CODEX_INOTIFY_PRESSURE_ALLOW_UNSAFE:-0}" = "1" ]
+}
+
+block_inotify_pressure_launch() {
+  local usage
+  local limits
+  local user_instances="unknown"
+  local user_watches="unknown"
+  local max_user_instances="unknown"
+  local max_user_watches="unknown"
+  local instance_percent="unknown"
+  local watch_percent="unknown"
+  local threshold
+
+  inotify_pressure_unsafe_allowed && return 0
+
+  threshold="$(inotify_guard_threshold_percent)"
+  usage="$(current_user_inotify_usage)"
+  limits="$(inotify_limits)"
+  read -r user_instances user_watches <<<"$usage"
+  read -r max_user_instances max_user_watches <<<"$limits"
+  instance_percent="$(usage_percent "$user_instances" "$max_user_instances")"
+  watch_percent="$(usage_percent "$user_watches" "$max_user_watches")"
+
+  if usage_meets_percent "$user_instances" "$max_user_instances" "$threshold" ||
+     usage_meets_percent "$user_watches" "$max_user_watches" "$threshold"; then
+    echo "Codex for Linux refused to launch because inotify usage is already at or above ${threshold}%." >&2
+    echo "Current user usage: instances=$user_instances/$max_user_instances (${instance_percent}%), watches=$user_watches/$max_user_watches (${watch_percent}%)." >&2
+    echo "Close other file-watching apps or raise fs.inotify limits, then retry." >&2
+    echo "Set CODEX_INOTIFY_PRESSURE_ALLOW_UNSAFE=1 only for controlled maintainer testing." >&2
+    launcher_log "Blocked launch because inotify pressure is high: instances=$user_instances/$max_user_instances watches=$user_watches/$max_user_watches threshold=${threshold}%"
+
+    if command -v notify-send >/dev/null 2>&1; then
+      notify-send \
+        "Codex for Linux blocked" \
+        "Inotify usage is already high. Close file watchers or raise limits, then retry." \
+        >/dev/null 2>&1 || true
+    fi
+
+    return 1
+  fi
+
+  return 0
+}
+
 block_kde_wayland_launch() {
   local message
   message="Codex for Linux refused to launch on KDE Wayland because this runtime has been observed to crash KWin."
@@ -1296,6 +1706,10 @@ main() {
 
   if [ "$session_is_kde_wayland" -eq 1 ] && ! kde_wayland_unsafe_allowed; then
     block_kde_wayland_launch
+    exit 78
+  fi
+
+  if ! block_inotify_pressure_launch; then
     exit 78
   fi
 
@@ -1593,6 +2007,9 @@ launch_impl() {
     echo "Codex for Linux refused to launch on KDE Wayland because the installed runtime launcher lacks the KWin crash guard." >&2
     echo "Run: codex-linux update --force" >&2
     echo "Do not launch the existing desktop entry until the runtime has been rebuilt." >&2
+    exit 78
+  fi
+  if ! block_inotify_pressure_launch; then
     exit 78
   fi
   exec "$INSTALL_DIR/start.sh"
