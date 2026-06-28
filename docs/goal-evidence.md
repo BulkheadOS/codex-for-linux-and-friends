@@ -1,0 +1,86 @@
+# Goal Evidence Matrix
+
+This matrix tracks what the public repository can prove now, what it deliberately
+does not claim, and what still needs live verification outside this repository.
+
+Date of this evidence pass: 2026-06-28.
+
+## Evidence classes
+
+- `Proven`: current repo files, commands, or live probes directly verify the
+  requirement.
+- `Guarded`: the safe behavior is to refuse or avoid an unsafe path.
+- `External observed`: a live service outside this repository was probed during
+  this pass, but the result is not repo-proven and can drift.
+- `Incomplete`: the requirement is not proven yet.
+
+## Repository scope
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Work only in the Codex Linux app repo | Proven for this evidence pass | This matrix and related checks are scoped to `BulkheadOS/codex-for-linux-and-friends`; Pobal-os is outside this repo and is not used as evidence here. |
+| Public unofficial posture | Proven | `README.md` states the project is not supported, endorsed, reviewed, or maintained by OpenAI. |
+| MIT tooling only, no OpenAI binary redistribution | Proven | `README.md`, `LICENSE`, ADR 0001, and `scripts/qa-public-safety.sh` enforce no committed DMGs, extracted app bundles, generated runtimes, `app.asar`, credentials, tokens, or user data. |
+| DDD and KCS discipline | Proven | `docs/ddd/context-map.md`, `docs/kcs/codex-linux-operations.md`, ADRs, and README project discipline section are present. |
+| Homebrew, Flatpak, and Discover path | Proven | `Formula/codex-for-linux.rb`, `packaging/flatpak/*`, `scripts/package-flatpak-local.sh`, `docs/packaging.md`, and README install sections document the packaging paths and redistribution limits. |
+| Keep current with upstream Codex app releases | Proven for explicit rebuild path | `codex-linux update` compares upstream URL, ETag, Last-Modified, and Content-Length, then rebuilds the local runtime. It is explicit, not a background updater. |
+
+## Runtime safety
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Avoid KWin hard crashes on KDE Wayland | Guarded | Installed launcher and `codex-linux launch` exit before Electron on KDE Wayland unless an unsafe maintainer override is set. |
+| Avoid process leaks | Proven by no-launch diagnostics | `codex-linux diagnostics --json` reports `electron=0`, `crashpad=0`, `webviewServer=0`, and webview port `5175` closed on the guarded host. |
+| Avoid high file-watch pressure failures | Proven | Diagnostics reports inotify instance/watch usage and the launcher refuses when usage reaches the configured guard threshold. |
+| No GUI launch during unsafe QA | Guarded | Current KDE Wayland host is a no-launch test environment because earlier launches caused KWin coredumps. |
+
+## Accessibility and UX
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| ADHD and AuDHD friendly wrapper surface | Proven for controlled surfaces | `docs/product-principles.md` and `docs/accessibility-ux.md` require stable command names, one diagnostics path, short docs, no surprise background work, and explicit next actions. |
+| WCAG 2.2 or higher | Guarded | `docs/accessibility-ux.md` targets WCAG 2.2 intent only for controlled wrapper surfaces. It explicitly does not claim audited Linux WCAG conformance for the inherited upstream app UI. |
+| A11y public intake | Proven | `.github/ISSUE_TEMPLATE/accessibility_report.yml` captures keyboard/focus, screen reader, contrast, motion/timing, cognitive load, ADHD/AuDHD, and docs/support-flow issues with diagnostics and privacy warnings. |
+| Upstream app UI accessibility | Incomplete | GUI testing is blocked on this KDE Wayland host until a safe launch path exists. |
+
+## Upstream Codex app features
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Appshots | Incomplete / not claimed on Linux | Official docs reviewed in `docs/feature-parity.md` currently describe Appshots as macOS-only. |
+| Computer Use | Incomplete / not claimed on Linux | Official docs reviewed in `docs/feature-parity.md` currently describe Computer Use as macOS/Windows-only. |
+| Automations | Guarded on KDE Wayland; incomplete elsewhere | Official docs require the local app to run and access the project path. The crash guard blocks the current KDE Wayland session. |
+| Other inherited app features | Incomplete unless live-tested | Features that depend on account flags, remote state, or GUI sign-in need a safe desktop session before this repo can claim them. |
+
+## Fediverse profile evidence
+
+These checks are external to this repo and can drift. They are recorded only as
+dated observations because ElectricTown and Coolock Village profile visibility
+was checked during this pass without syncing personal data into the Codex Linux
+repository.
+
+External observations are not repo-proven. Re-run the probes before making a
+current public claim.
+
+| Profile | Status | Evidence |
+|---|---|---|
+| `@coolockvillage@coolockvillage.ie` WebFinger | External observed | `https://coolockvillage.ie/.well-known/webfinger?resource=acct:coolockvillage@coolockvillage.ie` returned `200` with ActivityPub actor and profile-page links during this pass. |
+| `@coolockvillage@coolockvillage.ie` actor/icon | External observed | `https://coolockvillage.ie/ap/actor` returned organization actor data with name `Coolock Village`, summary, inbox/outbox, public key, and icon URL `https://coolockvillage.ie/images/coolock_village_logo.png` during this pass. |
+| `@electrictown@electrictown.ie` WebFinger | External observed | `https://electrictown.ie/.well-known/webfinger?resource=acct:electrictown@electrictown.ie` returned `200` with ActivityPub actor and profile-page links during this pass. |
+| `@electrictown@electrictown.ie` actor/icon | External observed | `https://electrictown.ie/ap/actor` returned organization actor data with name `ElectricTown`, summary, inbox/outbox, public key, and icon URL `https://electrictown.ie/icon-512.png` during this pass. |
+| Search from a third-party Mastodon UI | Incomplete | WebFinger and actor documents were observed to expose federation surfaces, but a live search from `mastodon.org` or another Mastodon UI has not been captured in this repository. |
+
+## Completion rule
+
+Do not mark the full goal complete until:
+
+1. `codex-linux diagnostics --json` reports `session-clear` on the target host,
+   or a documented launch guard is intentionally accepted as the correct
+   target-host behavior.
+2. GUI feature checks are run from a desktop session that does not crash KWin.
+3. Appshots, Computer Use, Automations, and upstream app UI claims are updated
+   only with live evidence and dated source review.
+4. Fediverse profile search is verified from the requested third-party Mastodon
+   UI, not only WebFinger/actor endpoints.
+5. No generated runtime, DMG, app bundle, `app.asar`, token, cookie, private
+   prompt, full coredump, or personal screenshot is committed.

@@ -940,6 +940,11 @@ if ! grep -q 'docs/accessibility-ux.md' README.md; then
   exit 1
 fi
 
+if ! grep -q 'docs/goal-evidence.md' README.md; then
+  echo "README must link the goal evidence matrix" >&2
+  exit 1
+fi
+
 for term in 'WCAG 2.2' ADHD AuDHD diagnostics 'upstream app UI' 'personal data'; do
   if ! grep -q "$term" docs/accessibility-ux.md; then
     echo "accessibility UX notes must cover $term" >&2
@@ -960,6 +965,40 @@ for term in 'diagnostics --json' 'WCAG 2.2' 'ADHD / AuDHD' 'Keyboard or focus' '
     exit 1
   fi
 done
+
+for term in \
+  'KWin hard crashes' \
+  'Appshots | Incomplete / not claimed on Linux' \
+  'Computer Use | Incomplete / not claimed on Linux' \
+  'Automations | Guarded on KDE Wayland' \
+  'External observations are not repo-proven' \
+  '@coolockvillage@coolockvillage.ie' \
+  '@electrictown@electrictown.ie' \
+  'Search from a third-party Mastodon UI | Incomplete' \
+  'Do not mark the full goal complete' \
+  'Pobal-os is outside this repo' \
+  'session-clear'
+do
+  if ! grep -q "$term" docs/goal-evidence.md; then
+    echo "goal evidence matrix must preserve completion evidence term: $term" >&2
+    exit 1
+  fi
+done
+
+if grep -q 'External proven' docs/goal-evidence.md; then
+  echo "goal evidence matrix must not treat external service probes as repo-proven" >&2
+  exit 1
+fi
+
+if awk '/^## Fediverse profile evidence/{inside=1; next} /^## /{inside=0} inside && /\|.*Proven/{found=1} END{exit found ? 0 : 1}' docs/goal-evidence.md; then
+  echo "Fediverse profile evidence must not use Proven status for external service probes" >&2
+  exit 1
+fi
+
+if grep -qi 'prove federation' docs/goal-evidence.md; then
+  echo "goal evidence matrix must not say external probes prove federation state" >&2
+  exit 1
+fi
 
 if ! grep -q 'blank_issues_enabled: false' .github/ISSUE_TEMPLATE/config.yml; then
   echo "GitHub issues should use structured templates for public safety" >&2

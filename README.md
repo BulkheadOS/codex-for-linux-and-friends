@@ -155,6 +155,7 @@ Start with:
 - [Security model](docs/security-model.md)
 - [Feature parity notes](docs/feature-parity.md)
 - [Accessibility and UX notes](docs/accessibility-ux.md)
+- [Goal evidence matrix](docs/goal-evidence.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## Prior art
