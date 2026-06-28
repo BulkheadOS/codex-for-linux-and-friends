@@ -1,0 +1,90 @@
+name: Bug report
+description: Report an install, update, launch, desktop integration, or packaging bug.
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project is unofficial and does not support the proprietary upstream Codex app itself.
+
+        Do not paste tokens, cookies, private prompts, raw credentials, generated runtime files, DMGs, `app.asar`, screenshots containing personal data, or full coredumps.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-safety check
+      options:
+        - label: I removed tokens, cookies, private prompts, generated app files, and personal data from this report.
+          required: true
+        - label: I understand this repository is not supported by OpenAI.
+          required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the behavior in a few concrete sentences.
+      placeholder: The install finished, but the desktop entry does not appear in the launcher.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: List the exact commands or clicks. Redact private paths if needed.
+      placeholder: |
+        1. Run `bash bin/codex-linux install`
+        2. Run `bash bin/codex-linux diagnostics`
+        3. Open the desktop launcher
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics output
+      description: Paste `bash bin/codex-linux diagnostics --json`. Review it first and redact anything sensitive.
+      render: json
+    validations:
+      required: true
+  - type: dropdown
+    id: distro
+    attributes:
+      label: Linux distribution family
+      options:
+        - Kubuntu / Ubuntu / Linux Mint
+        - SteamOS / Arch / Manjaro
+        - Fedora
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: session
+    attributes:
+      label: Desktop session
+      options:
+        - KDE Plasma Wayland
+        - KDE Plasma X11
+        - GNOME Wayland
+        - GNOME X11
+        - SteamOS Gaming Mode
+        - Other
+        - Unknown
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Codex for Linux commit or version
+      description: Use `git rev-parse --short HEAD` when running from source.
+      placeholder: "66879a8"
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: The desktop entry should open the guarded launcher.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Keep this short. Do not attach generated runtimes, DMGs, or private logs.

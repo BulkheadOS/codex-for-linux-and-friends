@@ -1,0 +1,96 @@
+name: Crash or process leak
+description: Report KWin crashes, Electron crashes, orphaned helpers, memory growth, or inotify watch pressure.
+title: "[Crash]: "
+labels: ["crash", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not launch Codex for Linux again on KDE Wayland if it already restarted KWin or your desktop session. Use `bash bin/codex-linux diagnostics` first.
+
+        Do not paste full coredumps, tokens, cookies, generated app files, private prompts, or screenshots containing personal data.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-safety check
+      options:
+        - label: I removed tokens, cookies, private prompts, generated app files, and personal data from this report.
+          required: true
+        - label: I did not attach full coredumps, DMGs, extracted app bundles, or generated runtime directories.
+          required: true
+  - type: dropdown
+    id: crash_type
+    attributes:
+      label: What failed?
+      options:
+        - KWin or desktop session restarted
+        - Electron app crashed
+        - Keyboard/mouse focus stopped working
+        - Orphaned Electron or crashpad process
+        - High memory usage
+        - High inotify instance/watch usage
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: No-launch diagnostics
+      description: Paste `bash bin/codex-linux diagnostics --json`. Review it first and redact anything sensitive.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: process_check
+    attributes:
+      label: Process or inotify evidence
+      description: Paste a narrow, redacted check. Avoid broad process lists with private paths.
+      placeholder: |
+        ps -eo pid,ppid,args | rg 'codex-for-linux|chrome_crashpad_handler|http.server 5175'
+        sysctl fs.inotify.max_user_instances fs.inotify.max_user_watches
+    validations:
+      required: false
+  - type: textarea
+    id: crash_summary
+    attributes:
+      label: Crash summary
+      description: Paste a short `coredumpctl info kwin_wayland` summary if relevant. Do not attach the coredump.
+      placeholder: |
+        Signal: SIGSEGV
+        Command Line: kwin_wayland ...
+        Last visible app action: launched Codex for Linux from desktop entry
+  - type: dropdown
+    id: distro
+    attributes:
+      label: Linux distribution family
+      options:
+        - Kubuntu / Ubuntu / Linux Mint
+        - SteamOS / Arch / Manjaro
+        - Fedora
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: session
+    attributes:
+      label: Desktop session
+      options:
+        - KDE Plasma Wayland
+        - KDE Plasma X11
+        - GNOME Wayland
+        - GNOME X11
+        - SteamOS Gaming Mode
+        - Other
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Last actions before failure
+      placeholder: |
+        1. Ran `codex-linux diagnostics`
+        2. Launched from desktop entry
+        3. KWin restarted before the app became interactive
+    validations:
+      required: true

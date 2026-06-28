@@ -45,6 +45,19 @@ documented file is the intended boundary.
 
 When you learn something repeatable, update [docs/kcs/codex-linux-operations.md](docs/kcs/codex-linux-operations.md).
 
+Use the GitHub issue forms for public reports:
+
+- Bug report: install, update, launcher, packaging, or desktop integration bugs
+- Crash or process leak: KWin crashes, Electron crashes, memory growth, orphaned
+  helpers, or high inotify usage
+- Feature compatibility: Appshots, Computer Use, Automations, browser, deep
+  links, Flatpak, Discover, or Homebrew behavior
+
+Ask reporters for `bash bin/codex-linux diagnostics --json` before requesting
+logs. Do not ask for full coredumps, generated runtimes, DMGs, extracted app
+bundles, `app.asar`, cookies, tokens, private prompts, or screenshots containing
+personal data.
+
 Good KCS entries include:
 
 - symptom

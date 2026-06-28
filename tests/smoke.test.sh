@@ -629,3 +629,108 @@ if ! grep -q 'home-directory access' README.md ||
   echo "Flatpak home access must be warned about in README, packaging docs, metadata, and package output" >&2
   exit 1
 fi
+
+for template in \
+  .github/ISSUE_TEMPLATE/bug_report.yml \
+  .github/ISSUE_TEMPLATE/crash_report.yml \
+  .github/ISSUE_TEMPLATE/feature_compatibility.yml
+do
+  if ! grep -q 'diagnostics --json' "$template"; then
+    echo "$template must ask for no-launch diagnostics evidence" >&2
+    exit 1
+  fi
+done
+
+node --input-type=module <<'NODE'
+import fs from "node:fs";
+import { parse } from "yaml";
+
+const allowedTypes = new Set(["checkboxes", "dropdown", "input", "markdown", "textarea"]);
+const files = fs.readdirSync(".github/ISSUE_TEMPLATE")
+  .filter((name) => name.endsWith(".yml"))
+  .map((name) => `.github/ISSUE_TEMPLATE/${name}`);
+
+for (const file of files) {
+  const data = parse(fs.readFileSync(file, "utf8"));
+
+  if (file.endsWith("/config.yml")) {
+    if (data.blank_issues_enabled !== false) {
+      throw new Error(`${file}: blank issues must be disabled`);
+    }
+    if (!Array.isArray(data.contact_links)) {
+      throw new Error(`${file}: contact_links must be an array`);
+    }
+    continue;
+  }
+
+  for (const key of ["name", "description", "title", "labels", "body"]) {
+    if (!(key in data)) {
+      throw new Error(`${file}: missing ${key}`);
+    }
+  }
+  if (!Array.isArray(data.body)) {
+    throw new Error(`${file}: body must be an array`);
+  }
+
+  const ids = new Set();
+  data.body.forEach((item, index) => {
+    if (!allowedTypes.has(item.type)) {
+      throw new Error(`${file}: invalid body type ${JSON.stringify(item.type)}`);
+    }
+    if (!item.attributes || typeof item.attributes !== "object") {
+      throw new Error(`${file}: item ${index} missing attributes`);
+    }
+    if (item.type !== "markdown") {
+      if (!item.id) {
+        throw new Error(`${file}: non-markdown item ${index} missing id`);
+      }
+      if (ids.has(item.id)) {
+        throw new Error(`${file}: duplicate id ${item.id}`);
+      }
+      ids.add(item.id);
+      if (!item.attributes.label) {
+        throw new Error(`${file}: item ${item.id} missing label`);
+      }
+    }
+    if (["checkboxes", "dropdown"].includes(item.type)) {
+      if (!Array.isArray(item.attributes.options) || item.attributes.options.length === 0) {
+        throw new Error(`${file}: item ${item.id || index} missing options`);
+      }
+    }
+    if (item.validations && typeof item.validations !== "object") {
+      throw new Error(`${file}: validations must be a map`);
+    }
+  });
+}
+NODE
+
+for term in tokens cookies "private prompts" "generated app files" "personal data"; do
+  if ! grep -Rqi "$term" .github/ISSUE_TEMPLATE/*.yml CONTRIBUTING.md; then
+    echo "public issue intake must warn about $term" >&2
+    exit 1
+  fi
+done
+
+if ! grep -Rqi 'DMGs' .github/ISSUE_TEMPLATE/*.yml CONTRIBUTING.md ||
+   ! grep -Rqi 'app.asar' .github/ISSUE_TEMPLATE/*.yml CONTRIBUTING.md ||
+   ! grep -Rqi 'screenshots' .github/ISSUE_TEMPLATE/*.yml CONTRIBUTING.md; then
+  echo "public issue intake must warn about generated app bundles and screenshots with personal data" >&2
+  exit 1
+fi
+
+if ! grep -q 'full coredumps' .github/ISSUE_TEMPLATE/crash_report.yml; then
+  echo "crash issue template must forbid full coredump attachments" >&2
+  exit 1
+fi
+
+if ! grep -q 'High memory usage' .github/ISSUE_TEMPLATE/crash_report.yml ||
+   ! grep -q 'High inotify instance/watch usage' .github/ISSUE_TEMPLATE/crash_report.yml ||
+   ! grep -q 'Process or inotify evidence' .github/ISSUE_TEMPLATE/crash_report.yml; then
+  echo "crash issue template must capture memory, inotify, and process-leak evidence" >&2
+  exit 1
+fi
+
+if ! grep -q 'blank_issues_enabled: false' .github/ISSUE_TEMPLATE/config.yml; then
+  echo "GitHub issues should use structured templates for public safety" >&2
+  exit 1
+fi

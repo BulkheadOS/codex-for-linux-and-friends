@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/BulkheadOS/codex-for-linux-and-friends/security/advisories/new
+    about: Report vulnerabilities or private security concerns without exposing secrets.
+  - name: OpenAI Codex support
+    url: https://help.openai.com/
+    about: Use OpenAI support for account, billing, model, or official Codex app issues.

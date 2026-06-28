@@ -1,0 +1,79 @@
+name: Feature compatibility
+description: Report whether an upstream Codex feature works, is missing, or is blocked on Linux.
+title: "[Feature compatibility]: "
+labels: ["feature-compatibility", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository should not overclaim upstream feature support. Use this form for Appshots, Computer Use, Automations, browser, deep links, and similar feature checks.
+
+        Do not paste tokens, private prompts, screenshots with personal data, generated app files, or account-sensitive details.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-safety check
+      options:
+        - label: I removed tokens, cookies, private prompts, generated app files, and personal data from this report.
+          required: true
+        - label: I understand feature availability may depend on upstream OpenAI account flags or unsupported operating-system APIs.
+          required: true
+  - type: dropdown
+    id: feature
+    attributes:
+      label: Feature
+      options:
+        - Appshots
+        - Computer Use
+        - Automations
+        - In-app browser
+        - Deep links
+        - Desktop entry / launcher integration
+        - Flatpak / Discover
+        - Homebrew
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics output
+      description: Paste `bash bin/codex-linux diagnostics --json`. Review it first and redact anything sensitive.
+      render: json
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: What did you observe?
+      options:
+        - Works
+        - Missing from the app
+        - Visible but fails
+        - Blocked by KDE Wayland guard
+        - Blocked by account or upstream availability
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Describe what you clicked and what happened. Keep account details private.
+      placeholder: The Automations UI is visible, but diagnostics reports launch is blocked on KDE Wayland.
+    validations:
+      required: true
+  - type: dropdown
+    id: session
+    attributes:
+      label: Desktop session
+      options:
+        - KDE Plasma Wayland
+        - KDE Plasma X11
+        - GNOME Wayland
+        - GNOME X11
+        - SteamOS Gaming Mode
+        - Other
+        - Unknown
+    validations:
+      required: true
