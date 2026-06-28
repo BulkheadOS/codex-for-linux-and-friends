@@ -140,8 +140,9 @@ session safety. On KDE Wayland, the launcher can be intentionally blocked before
 Electron starts.
 
 Fix: use the diagnostics command. It reports install state, desktop-session
-safety, Appshots, Computer Use, Automations, and recursive file-watch posture
-without starting the app or printing project paths:
+safety, Appshots, Computer Use, Automations, recursive file-watch posture, live
+runtime process counts, local webview-port status, and inotify limits without
+starting the app or printing project paths:
 
 ```bash
 bash bin/codex-linux diagnostics
@@ -150,7 +151,8 @@ bash bin/codex-linux diagnostics --json
 
 Verification: on a guarded KDE Wayland session, the command should report
 `Launch safety: blocked` and `Automations: blocked` without creating an Electron
-process.
+process. `Runtime health` should show count-only process, port, and inotify
+evidence that can be pasted into a public issue without leaking local paths.
 
 ## Article: generated Flatpak bundle contains upstream app files
 
@@ -308,10 +310,12 @@ Verification:
 
 ```bash
 sysctl fs.inotify.max_user_instances fs.inotify.max_user_watches
+bash bin/codex-linux diagnostics
 ```
 
-Then compare the app process watch count before and after restarting Codex for
-Linux.
+Then compare the diagnostics `codex_related_fds` count before and after
+restarting Codex for Linux. Do not paste raw process lists, full command lines,
+or workspace paths into public issues unless they are redacted.
 
 ## Article: Linux editors are listed but detection logs `Unknown open target`
 

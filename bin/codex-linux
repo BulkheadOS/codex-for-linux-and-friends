@@ -266,6 +266,125 @@ host_kde_wayland_unsafe_allowed() {
   [ "${CODEX_KDE_WAYLAND_ALLOW_UNSAFE:-0}" = "1" ] || [ "${CODEX_KWIN_ALLOW_UNSAFE:-0}" = "1" ]
 }
 
+diagnostic_runtime_process_counts() {
+  local electron_count=0
+  local crashpad_count=0
+  local webview_count=0
+  local proc
+  local cmdline
+  local webview_port="${CODEX_WEBVIEW_PORT:-5175}"
+  local proc_cwd
+
+  for proc in /proc/[0-9]*; do
+    [ -d "$proc" ] || continue
+    [ -r "$proc/cmdline" ] || continue
+    cmdline="$(tr '\0' ' ' <"$proc/cmdline" 2>/dev/null || true)"
+    [ -n "$cmdline" ] || continue
+
+    case "$cmdline" in
+      *"$INSTALL_DIR/electron"*)
+        electron_count=$((electron_count + 1))
+        ;;
+    esac
+    case "$cmdline" in
+      *"$INSTALL_DIR/chrome_crashpad_handler"*)
+        crashpad_count=$((crashpad_count + 1))
+        ;;
+    esac
+    case "$cmdline" in
+      *"python3 -m http.server $webview_port"*"--bind 127.0.0.1"*)
+        proc_cwd="$(readlink -f "$proc/cwd" 2>/dev/null || true)"
+        if [ "$proc_cwd" = "$INSTALL_DIR/content/webview" ]; then
+          webview_count=$((webview_count + 1))
+        fi
+        ;;
+    esac
+  done
+
+  printf '%s %s %s\n' "$electron_count" "$crashpad_count" "$webview_count"
+}
+
+diagnostic_webview_port_status() {
+  local webview_port="${CODEX_WEBVIEW_PORT:-5175}"
+
+  if ! command -v node >/dev/null 2>&1; then
+    printf 'unknown\n'
+    return
+  fi
+
+  node - "$webview_port" <<'NODE'
+const net = require("net");
+const port = Number(process.argv[2]);
+
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  console.log("unknown");
+  process.exit(0);
+}
+
+let finished = false;
+const socket = net.createConnection({ host: "127.0.0.1", port });
+
+function finish(status) {
+  if (finished) return;
+  finished = true;
+  socket.destroy();
+  console.log(status);
+}
+
+socket.setTimeout(250, () => finish("unknown"));
+socket.once("connect", () => finish("open"));
+socket.once("error", (error) => {
+  if (error && ["ECONNREFUSED", "EHOSTUNREACH", "ENETUNREACH"].includes(error.code)) {
+    finish("closed");
+    return;
+  }
+  finish("unknown");
+});
+NODE
+}
+
+diagnostic_read_inotify_limit() {
+  local file="$1"
+
+  if [ -r "$file" ]; then
+    tr -d '[:space:]' <"$file"
+  else
+    printf 'unknown'
+  fi
+}
+
+diagnostic_codex_inotify_fd_count() {
+  local count=0
+  local proc
+  local fd
+  local target
+  local cmdline
+
+  for proc in /proc/[0-9]*; do
+    [ -d "$proc/fd" ] || continue
+    [ -r "$proc/cmdline" ] || continue
+    cmdline="$(tr '\0' ' ' <"$proc/cmdline" 2>/dev/null || true)"
+    [ -n "$cmdline" ] || continue
+
+    case "$cmdline" in
+      *"$INSTALL_DIR/"*|*"codex-for-linux"*|*"CodexForLinux"*)
+        ;;
+      *)
+        continue
+        ;;
+    esac
+
+    for fd in "$proc"/fd/*; do
+      target="$(readlink "$fd" 2>/dev/null || true)"
+      if [ "$target" = "anon_inode:inotify" ]; then
+        count=$((count + 1))
+      fi
+    done
+  done
+
+  printf '%s\n' "$count"
+}
+
 diagnostics_impl() {
   local installed="no"
   local app_version="unknown"
@@ -279,6 +398,15 @@ diagnostics_impl() {
   local file_watch_detail="recursive Linux fs.watch is disabled by default; set CODEX_LINUX_RECURSIVE_WATCH=1 only after raising inotify limits"
   local file_watch_plain="recursive Linux fs.watch is disabled by default."
   local file_watch_override_plain="set CODEX_LINUX_RECURSIVE_WATCH=1 only after raising inotify limits."
+  local runtime_process_counts
+  local runtime_electron_count=0
+  local runtime_crashpad_count=0
+  local runtime_webview_count=0
+  local webview_port="${CODEX_WEBVIEW_PORT:-5175}"
+  local webview_port_status="unknown"
+  local inotify_max_user_instances="unknown"
+  local inotify_max_user_watches="unknown"
+  local inotify_codex_fd_count=0
 
   if [ "${CODEX_LINUX_RECURSIVE_WATCH:-0}" = "1" ]; then
     file_watch_status="override-active"
@@ -322,8 +450,15 @@ diagnostics_impl() {
     session_label="Wayland"
   fi
 
+  runtime_process_counts="$(diagnostic_runtime_process_counts)"
+  read -r runtime_electron_count runtime_crashpad_count runtime_webview_count <<<"$runtime_process_counts"
+  webview_port_status="$(diagnostic_webview_port_status)"
+  inotify_max_user_instances="$(diagnostic_read_inotify_limit /proc/sys/fs/inotify/max_user_instances)"
+  inotify_max_user_watches="$(diagnostic_read_inotify_limit /proc/sys/fs/inotify/max_user_watches)"
+  inotify_codex_fd_count="$(diagnostic_codex_inotify_fd_count)"
+
   if [ "$PRINT_JSON" -eq 1 ]; then
-    node - "$installed" "$app_version" "$electron_version" "$session_label" "$launch_status" "$launch_detail" "$automations_status" "$automations_detail" "$file_watch_status" "$file_watch_detail" <<'NODE'
+    node - "$installed" "$app_version" "$electron_version" "$session_label" "$launch_status" "$launch_detail" "$automations_status" "$automations_detail" "$file_watch_status" "$file_watch_detail" "$runtime_electron_count" "$runtime_crashpad_count" "$runtime_webview_count" "$webview_port" "$webview_port_status" "$inotify_max_user_instances" "$inotify_max_user_watches" "$inotify_codex_fd_count" <<'NODE'
 const [
   installed,
   appVersion,
@@ -335,7 +470,19 @@ const [
   automationsDetail,
   fileWatchStatus,
   fileWatchDetail,
+  runtimeElectronCount,
+  runtimeCrashpadCount,
+  runtimeWebviewCount,
+  webviewPort,
+  webviewPortStatus,
+  inotifyMaxUserInstances,
+  inotifyMaxUserWatches,
+  inotifyCodexFdCount,
 ] = process.argv.slice(2);
+
+function maybeNumber(value) {
+  return /^[0-9]+$/.test(String(value)) ? Number(value) : null;
+}
 
 console.log(JSON.stringify({
   installed: installed === "yes",
@@ -364,6 +511,22 @@ console.log(JSON.stringify({
     status: fileWatchStatus,
     detail: fileWatchDetail,
   },
+  runtimeHealth: {
+    processes: {
+      electron: maybeNumber(runtimeElectronCount),
+      crashpad: maybeNumber(runtimeCrashpadCount),
+      webviewServer: maybeNumber(runtimeWebviewCount),
+    },
+    webviewPort: {
+      port: maybeNumber(webviewPort),
+      status: webviewPortStatus,
+    },
+    inotify: {
+      maxUserInstances: maybeNumber(inotifyMaxUserInstances),
+      maxUserWatches: maybeNumber(inotifyMaxUserWatches),
+      codexRelatedFdCount: maybeNumber(inotifyCodexFdCount),
+    },
+  },
 }, null, 2));
 NODE
     return
@@ -386,6 +549,11 @@ Feature status:
 Runtime safety:
   File watching: $file_watch_plain
   Override: $file_watch_override_plain
+
+Runtime health:
+  Processes: electron=$runtime_electron_count crashpad=$runtime_crashpad_count webview=$runtime_webview_count
+  Webview port: $webview_port $webview_port_status
+  Inotify: max_user_instances=$inotify_max_user_instances max_user_watches=$inotify_max_user_watches codex_related_fds=$inotify_codex_fd_count
 EOF
 }
 

@@ -43,6 +43,10 @@ case "$diagnostics_output" in
   *"Computer Use: not claimed on Linux"* ) ;;
   * ) echo "diagnostics should not claim Linux Computer Use support" >&2; exit 1 ;;
 esac
+case "$diagnostics_output" in
+  *"Runtime health:"*"Processes: electron="*"Webview port: 5175 "*"Inotify: max_user_instances="* ) ;;
+  * ) echo "diagnostics should include no-launch runtime health evidence" >&2; exit 1 ;;
+esac
 
 diagnostics_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
 node -e '
@@ -51,6 +55,14 @@ if (value.installed !== false) process.exit(1);
 if (value.launchSafety.status !== "blocked") process.exit(1);
 if (value.features.appshots.status !== "not-claimed-on-linux") process.exit(1);
 if (value.features.computerUse.status !== "not-claimed-on-linux") process.exit(1);
+if (typeof value.runtimeHealth?.processes?.electron !== "number") process.exit(1);
+if (typeof value.runtimeHealth?.processes?.crashpad !== "number") process.exit(1);
+if (typeof value.runtimeHealth?.processes?.webviewServer !== "number") process.exit(1);
+if (value.runtimeHealth?.webviewPort?.port !== 5175) process.exit(1);
+if (!["open", "closed", "unknown"].includes(value.runtimeHealth?.webviewPort?.status)) process.exit(1);
+if (value.runtimeHealth?.inotify?.maxUserInstances !== null && typeof value.runtimeHealth?.inotify?.maxUserInstances !== "number") process.exit(1);
+if (value.runtimeHealth?.inotify?.maxUserWatches !== null && typeof value.runtimeHealth?.inotify?.maxUserWatches !== "number") process.exit(1);
+if (typeof value.runtimeHealth?.inotify?.codexRelatedFdCount !== "number") process.exit(1);
 ' "$diagnostics_json"
 
 watch_override_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_LINUX_RECURSIVE_WATCH=1 CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
@@ -59,6 +71,13 @@ const value = JSON.parse(process.argv[1]);
 if (value.fileWatching.status !== "override-active") process.exit(1);
 if (!value.fileWatching.detail.includes("CODEX_LINUX_RECURSIVE_WATCH=1")) process.exit(1);
 ' "$watch_override_json"
+
+custom_port_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_WEBVIEW_PORT=5176 CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.runtimeHealth.webviewPort.port !== 5176) process.exit(1);
+if (!["open", "closed", "unknown"].includes(value.runtimeHealth.webviewPort.status)) process.exit(1);
+' "$custom_port_json"
 
 missing_kde_override_json="$(
   env \
