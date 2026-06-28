@@ -770,19 +770,9 @@ main() {
 
   start_webview_server
 
-  local ozone_platform="${CODEX_OZONE_PLATFORM:-}"
-  local ozone_platform_hint="${CODEX_OZONE_PLATFORM_HINT:-}"
+  local ozone_platform="${CODEX_OZONE_PLATFORM:-x11}"
+  local ozone_platform_hint="${CODEX_OZONE_PLATFORM_HINT:-x11}"
   local extra_flags=()
-
-  if [ -z "$ozone_platform" ]; then
-    if [ -n "${WAYLAND_DISPLAY:-}" ]; then
-      ozone_platform="wayland"
-      ozone_platform_hint="wayland"
-    else
-      ozone_platform="x11"
-      ozone_platform_hint="x11"
-    fi
-  fi
 
   if [ "$ozone_platform" = "wayland" ]; then
     extra_flags+=(
