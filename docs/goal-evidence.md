@@ -62,14 +62,26 @@ repository.
 External observations are not repo-proven. Re-run the probes before making a
 current public claim.
 
+Reproducible check:
+
+```bash
+npm run verify:fediverse -- --json
+npm run verify:fediverse -- --strict-mastodon --json
+```
+
+The default check exits nonzero only when direct WebFinger, actor, or icon checks
+fail. `--strict-mastodon` also fails on remote Mastodon cache mismatches, which
+is the expected current result until Coolock's remote cached `acct` matches
+`coolockvillage@coolockvillage.ie`.
+
 | Profile | Status | Evidence |
 |---|---|---|
-| `@coolockvillage@coolockvillage.ie` WebFinger | External observed | `https://coolockvillage.ie/.well-known/webfinger?resource=acct:coolockvillage@coolockvillage.ie` returned `200` with ActivityPub actor and profile-page links during this pass. |
-| `@coolockvillage@coolockvillage.ie` actor/icon | External observed | `https://coolockvillage.ie/ap/actor` returned organization actor data with name `Coolock Village`, summary, inbox/outbox, public key, and icon URL `https://coolockvillage.ie/images/coolock_village_logo.png` during this pass. |
-| `@electrictown@electrictown.ie` WebFinger | External observed | `https://electrictown.ie/.well-known/webfinger?resource=acct:electrictown@electrictown.ie` returned `200` with ActivityPub actor and profile-page links during this pass. |
-| `@electrictown@electrictown.ie` actor/icon | External observed | `https://electrictown.ie/ap/actor` returned organization actor data with name `ElectricTown`, summary, inbox/outbox, public key, and icon URL `https://electrictown.ie/icon-512.png` during this pass. |
+| `@coolockvillage@coolockvillage.ie` WebFinger | External observed | `npm run verify:fediverse -- --json` reported `webfinger.status=pass`, subject `acct:coolockvillage@coolockvillage.ie`, and ActivityPub actor/profile-page links during this pass. |
+| `@coolockvillage@coolockvillage.ie` actor/icon | External observed | `npm run verify:fediverse -- --json` reported organization actor data with name `Coolock Village`, summary, inbox/outbox, public key, icon URL `https://coolockvillage.ie/images/coolock_village_logo.png`, and `icon.status=pass` during this pass. |
+| `@electrictown@electrictown.ie` WebFinger | External observed | `npm run verify:fediverse -- --json` reported `webfinger.status=pass`, subject `acct:electrictown@electrictown.ie`, and ActivityPub actor/profile-page links during this pass. |
+| `@electrictown@electrictown.ie` actor/icon | External observed | `npm run verify:fediverse -- --json` reported organization actor data with name `ElectricTown`, summary, inbox/outbox, public key, icon URL `https://electrictown.ie/icon-512.png`, and `icon.status=pass` during this pass. |
 | `@electrictown@electrictown.ie` Mastodon instance search | External observed | Unauthenticated `mastodon.social` search without remote resolution returned an account with matching `acct`, display name `ElectricTown`, enriched fields, and cached avatar/header URLs during this pass. |
-| `@coolockvillage@coolockvillage.ie` Mastodon instance search | Incomplete | Unauthenticated `mastodon.social` search without remote resolution returned a visible Coolock Village account with enriched fields and cached avatar/header URLs, but the cached `acct` was `Dublin@coolockvillage.ie`; exact handle consistency is not proven. |
+| `@coolockvillage@coolockvillage.ie` Mastodon instance search | Incomplete | `npm run verify:fediverse -- --strict-mastodon --json` failed as expected because unauthenticated `mastodon.social` search returned a visible Coolock Village account with enriched fields and cached avatar/header URLs, but the cached `acct` was `Dublin@coolockvillage.ie`; exact handle consistency is not proven. |
 | `mastodon.org` direct verification | Incomplete | Direct `curl` probes to `mastodon.org` failed with a TLS internal-error alert in this environment, so the requested `mastodon.org` UI/search path was not captured. |
 | Search from a third-party Mastodon UI | Incomplete | WebFinger, actor documents, and `mastodon.social` search were observed to expose federation surfaces, but a browser-visible search from the requested `mastodon.org` UI has not been captured in this repository. |
 

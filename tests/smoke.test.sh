@@ -945,6 +945,13 @@ if ! grep -q 'docs/goal-evidence.md' README.md; then
   exit 1
 fi
 
+if ! grep -q '"verify:fediverse"' package.json; then
+  echo "package scripts must expose the Fediverse profile verifier" >&2
+  exit 1
+fi
+
+node --check scripts/verify-fediverse-profiles.mjs >/dev/null
+
 for term in 'WCAG 2.2' ADHD AuDHD diagnostics 'upstream app UI' 'personal data'; do
   if ! grep -q "$term" docs/accessibility-ux.md; then
     echo "accessibility UX notes must cover $term" >&2
@@ -977,6 +984,8 @@ for term in \
   'Search from a third-party Mastodon UI | Incomplete' \
   'Do not mark the full goal complete' \
   'Pobal-os is outside this repo' \
+  'npm run verify:fediverse -- --json' \
+  'npm run verify:fediverse -- --strict-mastodon --json' \
   'session-clear'
 do
   if ! grep -Fq "$term" docs/goal-evidence.md; then
@@ -987,7 +996,7 @@ done
 
 for row in \
   '| `@electrictown@electrictown.ie` Mastodon instance search | External observed | Unauthenticated `mastodon.social` search without remote resolution returned an account with matching `acct`' \
-  '| `@coolockvillage@coolockvillage.ie` Mastodon instance search | Incomplete | Unauthenticated `mastodon.social` search without remote resolution returned a visible Coolock Village account' \
+  '| `@coolockvillage@coolockvillage.ie` Mastodon instance search | Incomplete | `npm run verify:fediverse -- --strict-mastodon --json` failed as expected' \
   'cached `acct` was `Dublin@coolockvillage.ie`; exact handle consistency is not proven' \
   '| `mastodon.org` direct verification | Incomplete | Direct `curl` probes to `mastodon.org` failed with a TLS internal-error alert'
 do
