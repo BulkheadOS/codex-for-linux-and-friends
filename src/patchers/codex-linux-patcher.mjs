@@ -222,8 +222,6 @@ function patchWindowHints(root) {
   const iconExpression = `require("node:path").join(process.resourcesPath,"..","content","webview","assets","${iconAsset}")`;
   const replacementComment = `/* ${marker}WindowHints */`;
 
-  source = source.replaceAll("process.platform===`win32`", "(process.platform===`win32`||process.platform===`linux`)");
-
   const readyNeedle = "D.once(`ready-to-show`,()=>{";
   if (source.includes(readyNeedle) && !source.includes("D.setIcon(")) {
     source = source.replace(readyNeedle, `process.platform===\`linux\`&&D.setIcon(${iconExpression}),${readyNeedle}`);
@@ -236,22 +234,67 @@ function patchWindowHints(root) {
   write(filePath, source);
 }
 
-export function patchCodexForLinux(root) {
+function patchInputSchema(root) {
+  const buildDir = path.join(root, ".vite", "build");
+  const webviewDir = path.join(root, "webview");
+
+  // 1. Patch preload scripts
+  if (exists(buildDir)) {
+    for (const filePath of jsFiles(buildDir)) {
+      let source = read(filePath);
+      if (source.includes("inputSchema:t.inputSchema??null")) {
+        source = source.replaceAll(
+          "inputSchema:t.inputSchema??null",
+          "inputSchema:t.inputSchema??{type:\"object\",properties:{}}"
+        );
+        write(filePath, source);
+      }
+    }
+  }
+
+  // 2. Patch webview JS assets
+  if (exists(webviewDir)) {
+    for (const filePath of jsFiles(webviewDir)) {
+      let source = read(filePath);
+      const target = "inputSchema:U({type:G(`object`),properties:Su(B(),NB).optional(),required:H(B()).optional()}).catchall(mu())";
+      if (source.includes(target)) {
+        source = source.replaceAll(
+          target,
+          "inputSchema:U({type:G(`object`),properties:Su(B(),NB).optional(),required:H(B()).optional()}).catchall(mu()).optional().nullable()"
+        );
+        write(filePath, source);
+      }
+    }
+  }
+}
+
+import { patchUpstreamApp } from "./upstream-patches.mjs";
+
+export async function patchCodexForLinux(root, { isTest = false } = {}) {
   patchPackageJson(root);
   patchBetterSqlite(root);
   patchNodePty(root);
   patchOwlFeatureFallback(root);
   patchWindowHints(root);
+  patchInputSchema(root);
+  if (!isTest) {
+    await patchUpstreamApp(root);
+  }
 }
 
-function main() {
+async function main() {
   const root = process.argv[2];
   if (!root) {
     console.error("Usage: codex-linux-patcher.mjs <extracted-app-asar-dir>");
     process.exit(1);
   }
-  patchCodexForLinux(root);
-  console.log(`Patched Codex bundle for Linux compatibility: ${root}`);
+  try {
+    await patchCodexForLinux(root);
+    console.log(`Patched Codex bundle for Linux compatibility: ${root}`);
+  } catch (err) {
+    console.error(`Patcher error: ${err.message}`);
+    process.exit(1);
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
