@@ -770,20 +770,37 @@ main() {
 
   start_webview_server
 
-  local ozone_platform="${CODEX_OZONE_PLATFORM:-x11}"
-  local ozone_platform_hint="${CODEX_OZONE_PLATFORM_HINT:-x11}"
+  local session_is_wayland=0
+  if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    session_is_wayland=1
+  fi
+
+  local ozone_platform
+  local ozone_platform_hint
+  if [ "$session_is_wayland" -eq 1 ]; then
+    ozone_platform="${CODEX_OZONE_PLATFORM:-wayland}"
+    ozone_platform_hint="${CODEX_OZONE_PLATFORM_HINT:-auto}"
+  else
+    ozone_platform="${CODEX_OZONE_PLATFORM:-x11}"
+    ozone_platform_hint="${CODEX_OZONE_PLATFORM_HINT:-x11}"
+  fi
+
   local extra_flags=()
 
-  if [ "$ozone_platform" = "wayland" ]; then
-    extra_flags+=(
-      "--enable-wayland-ime"
-      "--wayland-text-input-version=3"
-    )
-  else
-    # Bypass buggy IME on XWayland/X11 to restore typing (copy-paste only issue)
-    export GTK_IM_MODULE=xim
-    export QT_IM_MODULE=xim
+  # Bypass buggy IME on Linux if explicitly requested (can break standard keyboard typing)
+  if [ "${CODEX_DISABLE_IME:-0}" -eq 1 ]; then
+    export GTK_IM_MODULE=none
+    export QT_IM_MODULE=none
     export XMODIFIERS="@im=none"
+    extra_flags+=(
+      "--disable-gtk-ime"
+      "--disable-wayland-ime"
+    )
+  fi
+
+  if [ "$ozone_platform" = "wayland" ]; then
+    # Keep standard Wayland input version
+    extra_flags+=("--wayland-text-input-version=3")
   fi
 
   "$SCRIPT_DIR/electron" \
