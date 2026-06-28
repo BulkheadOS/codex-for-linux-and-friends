@@ -68,7 +68,10 @@ current public claim.
 | `@coolockvillage@coolockvillage.ie` actor/icon | External observed | `https://coolockvillage.ie/ap/actor` returned organization actor data with name `Coolock Village`, summary, inbox/outbox, public key, and icon URL `https://coolockvillage.ie/images/coolock_village_logo.png` during this pass. |
 | `@electrictown@electrictown.ie` WebFinger | External observed | `https://electrictown.ie/.well-known/webfinger?resource=acct:electrictown@electrictown.ie` returned `200` with ActivityPub actor and profile-page links during this pass. |
 | `@electrictown@electrictown.ie` actor/icon | External observed | `https://electrictown.ie/ap/actor` returned organization actor data with name `ElectricTown`, summary, inbox/outbox, public key, and icon URL `https://electrictown.ie/icon-512.png` during this pass. |
-| Search from a third-party Mastodon UI | Incomplete | WebFinger and actor documents were observed to expose federation surfaces, but a live search from `mastodon.org` or another Mastodon UI has not been captured in this repository. |
+| `@electrictown@electrictown.ie` Mastodon instance search | External observed | Unauthenticated `mastodon.social` search without remote resolution returned an account with matching `acct`, display name `ElectricTown`, enriched fields, and cached avatar/header URLs during this pass. |
+| `@coolockvillage@coolockvillage.ie` Mastodon instance search | Incomplete | Unauthenticated `mastodon.social` search without remote resolution returned a visible Coolock Village account with enriched fields and cached avatar/header URLs, but the cached `acct` was `Dublin@coolockvillage.ie`; exact handle consistency is not proven. |
+| `mastodon.org` direct verification | Incomplete | Direct `curl` probes to `mastodon.org` failed with a TLS internal-error alert in this environment, so the requested `mastodon.org` UI/search path was not captured. |
+| Search from a third-party Mastodon UI | Incomplete | WebFinger, actor documents, and `mastodon.social` search were observed to expose federation surfaces, but a browser-visible search from the requested `mastodon.org` UI has not been captured in this repository. |
 
 ## Completion rule
 
@@ -81,6 +84,6 @@ Do not mark the full goal complete until:
 3. Appshots, Computer Use, Automations, and upstream app UI claims are updated
    only with live evidence and dated source review.
 4. Fediverse profile search is verified from the requested third-party Mastodon
-   UI, not only WebFinger/actor endpoints.
+   UI, and remote Mastodon caches show the expected handles and profile icons.
 5. No generated runtime, DMG, app bundle, `app.asar`, token, cookie, private
    prompt, full coredump, or personal screenshot is committed.

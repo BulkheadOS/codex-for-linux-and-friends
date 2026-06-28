@@ -979,8 +979,20 @@ for term in \
   'Pobal-os is outside this repo' \
   'session-clear'
 do
-  if ! grep -q "$term" docs/goal-evidence.md; then
+  if ! grep -Fq "$term" docs/goal-evidence.md; then
     echo "goal evidence matrix must preserve completion evidence term: $term" >&2
+    exit 1
+  fi
+done
+
+for row in \
+  '| `@electrictown@electrictown.ie` Mastodon instance search | External observed | Unauthenticated `mastodon.social` search without remote resolution returned an account with matching `acct`' \
+  '| `@coolockvillage@coolockvillage.ie` Mastodon instance search | Incomplete | Unauthenticated `mastodon.social` search without remote resolution returned a visible Coolock Village account' \
+  'cached `acct` was `Dublin@coolockvillage.ie`; exact handle consistency is not proven' \
+  '| `mastodon.org` direct verification | Incomplete | Direct `curl` probes to `mastodon.org` failed with a TLS internal-error alert'
+do
+  if ! grep -Fq "$row" docs/goal-evidence.md; then
+    echo "goal evidence matrix must preserve exact Mastodon evidence boundary: $row" >&2
     exit 1
   fi
 done
