@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.bulkheados.CodexForLinux</id>
+  <name>Codex for Linux</name>
+  <summary>Unofficial local Linux compatibility launcher for the OpenAI Codex desktop app</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer_name>BulkheadOS contributors</developer_name>
+  <description>
+    <p>
+      Codex for Linux and friends builds a private Linux runtime from an official
+      Codex App DMG. It does not redistribute the OpenAI app and is not supported
+      by OpenAI.
+    </p>
+    <p>
+      The compatibility layer is experimental and can break when upstream app
+      internals change.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.bulkheados.CodexForLinux.desktop</launchable>
+  <categories>
+    <category>Development</category>
+    <category>Utility</category>
+  </categories>
+  <url type="homepage">https://github.com/BulkheadOS/codex-for-linux-and-friends</url>
+  <url type="bugtracker">https://github.com/BulkheadOS/codex-for-linux-and-friends/issues</url>
+  <releases>
+    <release version="0.1.0" date="2026-06-28">
+      <description>
+        <p>Initial public compatibility tooling for Kubuntu, SteamOS, and related Linux desktops.</p>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1" />
+</component>

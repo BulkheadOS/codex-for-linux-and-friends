@@ -1,0 +1,14 @@
+{
+  "name": "codex-for-linux-and-friends",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Unofficial local Linux compatibility builder for the OpenAI Codex desktop app.",
+  "scripts": {
+    "test": "bash tests/run.sh",
+    "test:node": "node --test tests/*.test.mjs",
+    "lint:desktop": "bash tests/desktop.test.sh",
+    "qa:public": "bash scripts/qa-public-safety.sh"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,38 @@
+app-id: com.bulkheados.CodexForLinux
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: codex-for-linux
+finish-args:
+  - --share=network
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=home
+  - --talk-name=org.freedesktop.Notifications
+modules:
+  - name: codex-for-linux-local-runtime
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: ../../dist/flatpak/runtime
+        dest: codex-runtime
+      - type: file
+        path: com.bulkheados.CodexForLinux.desktop
+      - type: file
+        path: com.bulkheados.CodexForLinux.metainfo.xml
+      - type: file
+        path: com.bulkheados.CodexForLinux.svg
+    build-commands:
+      - mkdir -p /app/bin /app/share/applications /app/share/metainfo /app/share/codex-for-linux
+      - cp -a codex-runtime /app/share/codex-for-linux/runtime
+      - install -Dm644 com.bulkheados.CodexForLinux.desktop /app/share/applications/com.bulkheados.CodexForLinux.desktop
+      - install -Dm644 com.bulkheados.CodexForLinux.metainfo.xml /app/share/metainfo/com.bulkheados.CodexForLinux.metainfo.xml
+      - install -Dm644 com.bulkheados.CodexForLinux.svg /app/share/icons/hicolor/scalable/apps/com.bulkheados.CodexForLinux.svg
+      - |
+        cat > /app/bin/codex-for-linux <<'EOF'
+        #!/usr/bin/env bash
+        set -Eeuo pipefail
+        exec /app/share/codex-for-linux/runtime/start.sh "$@"
+        EOF
+      - chmod +x /app/bin/codex-for-linux

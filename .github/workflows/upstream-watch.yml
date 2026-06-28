@@ -1,0 +1,34 @@
+name: Upstream Watch
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 9 * * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refresh upstream metadata
+        run: bash scripts/update-upstream-metadata.sh
+      - name: Create update pull request
+        if: ${{ !cancelled() }}
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: chore: refresh upstream codex app metadata
+          title: Refresh upstream Codex app metadata
+          body: |
+            Automated metadata refresh for the official Codex app DMG URLs.
+
+            This PR updates only header-derived metadata. It does not download,
+            attach, or redistribute upstream app binaries.
+          branch: automation/upstream-codex-app-metadata
+          delete-branch: true

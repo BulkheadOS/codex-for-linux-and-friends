@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Codex for Linux
+GenericName=Unofficial Codex App compatibility launcher
+Comment=Unofficial local Linux compatibility launcher for the OpenAI Codex desktop app
+Exec=__EXEC__
+Icon=__ICON__
+Terminal=false
+Categories=Development;
+StartupNotify=true
+StartupWMClass=codex-for-linux
+X-GNOME-UsesNotifications=true

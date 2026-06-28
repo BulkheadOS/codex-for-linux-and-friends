@@ -1,0 +1,30 @@
+# Generated runtime and packaging output
+runtime/
+dist/
+*.flatpak
+*.flatpakref
+*.bundle
+
+# Upstream/proprietary app artifacts
+*.dmg
+*.asar
+*.app/
+*.node
+*.so
+*.dylib
+
+# Dependency and build directories
+node_modules/
+.npm/
+.cache/
+coverage/
+steps_output.txt
+
+# Logs and local env
+*.log
+.env
+.env.*
+
+# OS/editor
+.DS_Store
+Thumbs.db
