@@ -61,6 +61,10 @@ A feature is marked `Not claimed on Linux` when official docs currently describe
 the feature as macOS-only or macOS/Windows-only. Do not market those features as
 working on Linux until live verification proves they work in the port.
 
+Run `bash bin/codex-linux diagnostics` for a host-specific check. It does not
+start Electron, and it reports Appshots, Computer Use, Automations, KDE Wayland
+launch safety, and Linux file-watch posture in one place.
+
 ## User-experience bar
 
 - Keep commands predictable and reversible.

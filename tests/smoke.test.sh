@@ -12,6 +12,10 @@ case "$help_output" in
   *"Codex for Linux and friends"* ) ;;
   * ) echo "help output did not include product name" >&2; exit 1 ;;
 esac
+case "$help_output" in
+  *"codex-linux diagnostics [--json]"* ) ;;
+  * ) echo "help output did not include diagnostics command" >&2; exit 1 ;;
+esac
 
 status_output="$(CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux status)"
 case "$status_output" in
@@ -21,6 +25,60 @@ esac
 
 json_output="$(CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux status --json)"
 node -e 'const value = JSON.parse(process.argv[1]); if (value.installed !== false) process.exit(1)' "$json_output"
+
+diagnostics_output="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics)"
+case "$diagnostics_output" in
+  *"Install:        no"* ) ;;
+  * ) echo "diagnostics should report a missing install without launching" >&2; exit 1 ;;
+esac
+case "$diagnostics_output" in
+  *"Launch safety:  blocked - runtime is not installed"* ) ;;
+  * ) echo "diagnostics should explain why launch is blocked when the runtime is missing" >&2; exit 1 ;;
+esac
+case "$diagnostics_output" in
+  *"Appshots:     not claimed on Linux"* ) ;;
+  * ) echo "diagnostics should not claim Linux Appshots support" >&2; exit 1 ;;
+esac
+case "$diagnostics_output" in
+  *"Computer Use: not claimed on Linux"* ) ;;
+  * ) echo "diagnostics should not claim Linux Computer Use support" >&2; exit 1 ;;
+esac
+
+diagnostics_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.installed !== false) process.exit(1);
+if (value.launchSafety.status !== "blocked") process.exit(1);
+if (value.features.appshots.status !== "not-claimed-on-linux") process.exit(1);
+if (value.features.computerUse.status !== "not-claimed-on-linux") process.exit(1);
+' "$diagnostics_json"
+
+watch_override_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_LINUX_RECURSIVE_WATCH=1 CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.fileWatching.status !== "override-active") process.exit(1);
+if (!value.fileWatching.detail.includes("CODEX_LINUX_RECURSIVE_WATCH=1")) process.exit(1);
+' "$watch_override_json"
+
+missing_kde_override_json="$(
+  env \
+  CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" \
+  CODEX_KDE_WAYLAND_ALLOW_UNSAFE=1 \
+  KDE_FULL_SESSION=true \
+  KDE_SESSION_VERSION=6 \
+  XDG_SESSION_TYPE=wayland \
+  XDG_CURRENT_DESKTOP=KDE \
+  XDG_SESSION_DESKTOP=KDE \
+  DESKTOP_SESSION=plasma \
+  bin/codex-linux diagnostics --json
+)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.installed !== false) process.exit(1);
+if (value.session !== "KDE Wayland") process.exit(1);
+if (value.launchSafety.status !== "blocked") process.exit(1);
+if (!value.launchSafety.detail.includes("not installed")) process.exit(1);
+' "$missing_kde_override_json"
 
 if grep -q 'exec "$SCRIPT_DIR/electron"' bin/codex-linux; then
   echo "launcher must not exec electron after starting the webview server; cleanup trap would be skipped" >&2
@@ -187,6 +245,138 @@ printf '%s\n' "$@" >"${0}.args"
 EOF
 chmod +x "$tmp_launcher_dir/electron"
 mkdir -p "$tmp_launcher_dir/home" "$tmp_launcher_dir/state" "$tmp_launcher_dir/cache"
+
+diagnostics_legacy_dir="$tmp_launcher_dir/diagnostics-legacy-runtime"
+mkdir -p "$diagnostics_legacy_dir"
+cat >"$diagnostics_legacy_dir/metadata.json" <<'EOF'
+{
+  "appVersion": "98.0.0-test",
+  "electronVersion": "41.0.0-test"
+}
+EOF
+cat >"$diagnostics_legacy_dir/start.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "legacy launcher ran" >&2
+exit 99
+EOF
+chmod +x "$diagnostics_legacy_dir/start.sh"
+
+legacy_diagnostics="$(
+  env \
+  CODEX_LINUX_INSTALL_DIR="$diagnostics_legacy_dir" \
+  KDE_FULL_SESSION=true \
+  KDE_SESSION_VERSION=6 \
+  XDG_SESSION_TYPE=wayland \
+  XDG_CURRENT_DESKTOP=KDE \
+  XDG_SESSION_DESKTOP=KDE \
+  DESKTOP_SESSION=plasma \
+  bin/codex-linux diagnostics
+)"
+case "$legacy_diagnostics" in
+  *"Launch safety:  blocked - installed runtime launcher lacks the KDE Wayland crash guard"* ) ;;
+  * ) echo "diagnostics should flag installed KDE Wayland runtimes that lack the crash guard" >&2; exit 1 ;;
+esac
+
+if legacy_launch_output="$(
+  env \
+  CODEX_LINUX_INSTALL_DIR="$diagnostics_legacy_dir" \
+  KDE_FULL_SESSION=true \
+  KDE_SESSION_VERSION=6 \
+  XDG_SESSION_TYPE=wayland \
+  XDG_CURRENT_DESKTOP=KDE \
+  XDG_SESSION_DESKTOP=KDE \
+  DESKTOP_SESSION=plasma \
+  bin/codex-linux launch 2>&1
+)"; then
+  echo "codex-linux launch must refuse legacy runtimes on KDE Wayland" >&2
+  exit 1
+fi
+case "$legacy_launch_output" in
+  *"lacks the KWin crash guard"* ) ;;
+  * ) echo "legacy runtime launch refusal should explain the missing KWin guard" >&2; exit 1 ;;
+esac
+case "$legacy_launch_output" in
+  *"legacy launcher ran"* ) echo "legacy runtime launcher must not execute on KDE Wayland" >&2; exit 1 ;;
+esac
+
+diagnostics_install_dir="$tmp_launcher_dir/diagnostics-runtime"
+mkdir -p "$diagnostics_install_dir"
+cat >"$diagnostics_install_dir/metadata.json" <<'EOF'
+{
+  "appVersion": "99.0.0-test",
+  "electronVersion": "42.1.0-test"
+}
+EOF
+cat >"$diagnostics_install_dir/start.sh" <<'EOF'
+#!/usr/bin/env bash
+# CODEX_KDE_WAYLAND_ALLOW_UNSAFE
+block_kde_wayland_launch() { :; }
+echo "diagnostics test launcher should not run" >&2
+exit 99
+EOF
+chmod +x "$diagnostics_install_dir/start.sh"
+
+kde_diagnostics="$(
+  env \
+  CODEX_LINUX_INSTALL_DIR="$diagnostics_install_dir" \
+  KDE_FULL_SESSION=true \
+  KDE_SESSION_VERSION=6 \
+  XDG_SESSION_TYPE=wayland \
+  XDG_CURRENT_DESKTOP=KDE \
+  XDG_SESSION_DESKTOP=KDE \
+  DESKTOP_SESSION=plasma \
+  bin/codex-linux diagnostics
+)"
+case "$kde_diagnostics" in
+  *"Install:        yes"* ) ;;
+  * ) echo "diagnostics should detect the installed runtime" >&2; exit 1 ;;
+esac
+case "$kde_diagnostics" in
+  *"Session:        KDE Wayland"* ) ;;
+  * ) echo "diagnostics should identify KDE Wayland sessions" >&2; exit 1 ;;
+esac
+case "$kde_diagnostics" in
+  *"Launch safety:  blocked - KDE Wayland crash guard prevents launch to avoid a KWin restart"* ) ;;
+  * ) echo "diagnostics should explain the KDE Wayland crash guard" >&2; exit 1 ;;
+esac
+
+kde_diagnostics_json="$(
+  env \
+  CODEX_LINUX_INSTALL_DIR="$diagnostics_install_dir" \
+  KDE_FULL_SESSION=true \
+  KDE_SESSION_VERSION=6 \
+  XDG_SESSION_TYPE=wayland \
+  XDG_CURRENT_DESKTOP=KDE \
+  XDG_SESSION_DESKTOP=KDE \
+  DESKTOP_SESSION=plasma \
+  bin/codex-linux diagnostics --json
+)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.installed !== true) process.exit(1);
+if (value.session !== "KDE Wayland") process.exit(1);
+if (value.launchSafety.status !== "blocked") process.exit(1);
+if (value.features.automations.status !== "blocked") process.exit(1);
+' "$kde_diagnostics_json"
+
+kde_override_diagnostics_json="$(
+  env \
+  CODEX_LINUX_INSTALL_DIR="$diagnostics_install_dir" \
+  CODEX_KWIN_ALLOW_UNSAFE=1 \
+  KDE_FULL_SESSION=true \
+  KDE_SESSION_VERSION=6 \
+  XDG_SESSION_TYPE=wayland \
+  XDG_CURRENT_DESKTOP=KDE \
+  XDG_SESSION_DESKTOP=KDE \
+  DESKTOP_SESSION=plasma \
+  bin/codex-linux diagnostics --json
+)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.installed !== true) process.exit(1);
+if (value.launchSafety.status !== "unsafe-override") process.exit(1);
+if (value.features.automations.status !== "unsafe-override") process.exit(1);
+' "$kde_override_diagnostics_json"
 
 rm -f "$tmp_launcher_dir/electron.args"
 if guard_output="$(

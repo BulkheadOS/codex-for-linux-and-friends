@@ -33,8 +33,11 @@ version, failing command, and launcher diagnostics. Do not include tokens.
 Verification:
 
 ```bash
-bash bin/codex-linux status
+bash bin/codex-linux diagnostics
 ```
+
+The command should report Appshots as `not claimed on Linux` and Computer Use
+as `not claimed on Linux`. It does not launch Electron.
 
 ## Article: `codex:` links do not open the app
 
@@ -119,11 +122,35 @@ safe launch path.
 Verification:
 
 ```bash
-XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=KDE CODEX_CLI_PATH=/bin/true ~/.local/share/codex-for-linux/runtime/start.sh
+XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=KDE bash bin/codex-linux diagnostics
 ```
 
-If the command refuses to launch with the KWin crash-guard message, automations
-are blocked by design on that session.
+If the command reports `Automations: blocked`, automations are blocked by
+design on that session. Use the generated `start.sh` guard probe only when you
+need to validate the installed launcher itself.
+
+## Article: checking safety without launching the app
+
+Symptom: the user wants to know whether the app can start, whether scheduled
+automations can run, or whether Appshots and Computer Use should be expected on
+Linux.
+
+Cause: feature support depends on both upstream Codex availability and local
+session safety. On KDE Wayland, the launcher can be intentionally blocked before
+Electron starts.
+
+Fix: use the diagnostics command. It reports install state, desktop-session
+safety, Appshots, Computer Use, Automations, and recursive file-watch posture
+without starting the app or printing project paths:
+
+```bash
+bash bin/codex-linux diagnostics
+bash bin/codex-linux diagnostics --json
+```
+
+Verification: on a guarded KDE Wayland session, the command should report
+`Launch safety: blocked` and `Automations: blocked` without creating an Electron
+process.
 
 ## Article: generated Flatpak bundle contains upstream app files
 

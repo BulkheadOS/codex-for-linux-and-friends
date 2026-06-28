@@ -74,6 +74,7 @@ Usage:
   codex-linux update [options]
   codex-linux launch
   codex-linux status [--json]
+  codex-linux diagnostics [--json]
   codex-linux doctor
   codex-linux uninstall
 
@@ -202,6 +203,190 @@ doctor_impl() {
 
   log "Dependency check passed."
   log "Using $SEVEN_ZIP_CMD, Node $(node -v), npm $(npm -v)."
+}
+
+metadata_field() {
+  local field="$1"
+  local fallback="$2"
+
+  if [ ! -f "$INSTALL_DIR/metadata.json" ]; then
+    printf '%s\n' "$fallback"
+    return
+  fi
+
+  node - "$INSTALL_DIR/metadata.json" "$field" "$fallback" <<'NODE'
+const fs = require("fs");
+const [metadataPath, field, fallback] = process.argv.slice(2);
+try {
+  const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+  const value = metadata[field];
+  console.log(value == null || value === "" ? fallback : String(value));
+} catch {
+  console.log(fallback);
+}
+NODE
+}
+
+runtime_installed() {
+  [ -x "$INSTALL_DIR/start.sh" ] && [ -f "$INSTALL_DIR/metadata.json" ]
+}
+
+runtime_has_kde_wayland_guard() {
+  [ -f "$INSTALL_DIR/start.sh" ] || return 1
+  grep -q 'block_kde_wayland_launch' "$INSTALL_DIR/start.sh" &&
+    grep -q 'CODEX_KDE_WAYLAND_ALLOW_UNSAFE' "$INSTALL_DIR/start.sh"
+}
+
+host_is_wayland_session() {
+  [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]
+}
+
+host_is_kde_wayland_session() {
+  local desktop_values
+  local desktop_lc
+
+  host_is_wayland_session || return 1
+
+  if [ "${KDE_FULL_SESSION:-}" = "true" ] || [ -n "${KDE_SESSION_VERSION:-}" ]; then
+    return 0
+  fi
+
+  desktop_values="${XDG_CURRENT_DESKTOP:-}:${XDG_SESSION_DESKTOP:-}:${DESKTOP_SESSION:-}"
+  desktop_lc="$(printf '%s' "$desktop_values" | tr '[:upper:]' '[:lower:]')"
+  case "$desktop_lc" in
+    *kde*|*plasma*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+host_kde_wayland_unsafe_allowed() {
+  [ "${CODEX_KDE_WAYLAND_ALLOW_UNSAFE:-0}" = "1" ] || [ "${CODEX_KWIN_ALLOW_UNSAFE:-0}" = "1" ]
+}
+
+diagnostics_impl() {
+  local installed="no"
+  local app_version="unknown"
+  local electron_version="unknown"
+  local session_label="X11 or unknown"
+  local launch_status="session-clear"
+  local launch_detail="desktop-session guard is clear; launch still requires the Codex CLI and runtime dependencies"
+  local automations_status="best-effort"
+  local automations_detail="local app must be running and able to access the selected project path"
+  local file_watch_status="guarded"
+  local file_watch_detail="recursive Linux fs.watch is disabled by default; set CODEX_LINUX_RECURSIVE_WATCH=1 only after raising inotify limits"
+  local file_watch_plain="recursive Linux fs.watch is disabled by default."
+  local file_watch_override_plain="set CODEX_LINUX_RECURSIVE_WATCH=1 only after raising inotify limits."
+
+  if [ "${CODEX_LINUX_RECURSIVE_WATCH:-0}" = "1" ]; then
+    file_watch_status="override-active"
+    file_watch_detail="CODEX_LINUX_RECURSIVE_WATCH=1 is set; monitor inotify usage and raise limits before using large workspaces"
+    file_watch_plain="recursive Linux fs.watch override is active."
+    file_watch_override_plain="CODEX_LINUX_RECURSIVE_WATCH=1 is set; monitor inotify usage."
+  fi
+
+  if runtime_installed; then
+    installed="yes"
+    app_version="$(metadata_field appVersion unknown)"
+    electron_version="$(metadata_field electronVersion unknown)"
+  else
+    launch_status="blocked"
+    launch_detail="runtime is not installed"
+    automations_status="blocked"
+    automations_detail="install the runtime before testing scheduled automations"
+  fi
+
+  if host_is_kde_wayland_session; then
+    session_label="KDE Wayland"
+    if [ "$installed" = "yes" ]; then
+      if ! runtime_has_kde_wayland_guard; then
+        launch_status="blocked"
+        launch_detail="installed runtime launcher lacks the KDE Wayland crash guard; run codex-linux update --force before launching"
+        automations_status="blocked"
+        automations_detail="installed runtime launcher lacks the KDE Wayland crash guard"
+      elif ! host_kde_wayland_unsafe_allowed; then
+        launch_status="blocked"
+        launch_detail="KDE Wayland crash guard prevents launch to avoid a KWin restart"
+        automations_status="blocked"
+        automations_detail="automations need the local app running; the crash guard blocks launch on this session"
+      else
+        launch_status="unsafe-override"
+        launch_detail="maintainer override is set; use only in a disposable session"
+        automations_status="unsafe-override"
+        automations_detail="automation testing is possible only with the unsafe maintainer override"
+      fi
+    fi
+  elif host_is_wayland_session; then
+    session_label="Wayland"
+  fi
+
+  if [ "$PRINT_JSON" -eq 1 ]; then
+    node - "$installed" "$app_version" "$electron_version" "$session_label" "$launch_status" "$launch_detail" "$automations_status" "$automations_detail" "$file_watch_status" "$file_watch_detail" <<'NODE'
+const [
+  installed,
+  appVersion,
+  electronVersion,
+  session,
+  launchStatus,
+  launchDetail,
+  automationsStatus,
+  automationsDetail,
+  fileWatchStatus,
+  fileWatchDetail,
+] = process.argv.slice(2);
+
+console.log(JSON.stringify({
+  installed: installed === "yes",
+  appVersion,
+  electronVersion,
+  session,
+  launchSafety: {
+    status: launchStatus,
+    detail: launchDetail,
+  },
+  features: {
+    appshots: {
+      status: "not-claimed-on-linux",
+      detail: "official Codex docs currently describe Appshots as macOS-only",
+    },
+    computerUse: {
+      status: "not-claimed-on-linux",
+      detail: "official Codex docs currently describe Computer Use as macOS/Windows-only",
+    },
+    automations: {
+      status: automationsStatus,
+      detail: automationsDetail,
+    },
+  },
+  fileWatching: {
+    status: fileWatchStatus,
+    detail: fileWatchDetail,
+  },
+}, null, 2));
+NODE
+    return
+  fi
+
+  cat <<EOF
+Codex for Linux diagnostics
+
+Install:        $installed
+App version:    $app_version
+Electron:       $electron_version
+Session:        $session_label
+Launch safety:  $launch_status - $launch_detail
+
+Feature status:
+  Appshots:     not claimed on Linux - official Codex docs currently describe Appshots as macOS-only
+  Computer Use: not claimed on Linux - official Codex docs currently describe Computer Use as macOS/Windows-only
+  Automations:  $automations_status - $automations_detail
+
+Runtime safety:
+  File watching: $file_watch_plain
+  Override: $file_watch_override_plain
+EOF
 }
 
 resolve_host_compiler() {
@@ -1236,6 +1421,12 @@ update_impl() {
 
 launch_impl() {
   [ -x "$INSTALL_DIR/start.sh" ] || die "Runtime is not installed. Run: codex-linux install"
+  if host_is_kde_wayland_session && ! host_kde_wayland_unsafe_allowed && ! runtime_has_kde_wayland_guard; then
+    echo "Codex for Linux refused to launch on KDE Wayland because the installed runtime launcher lacks the KWin crash guard." >&2
+    echo "Run: codex-linux update --force" >&2
+    echo "Do not launch the existing desktop entry until the runtime has been rebuilt." >&2
+    exit 78
+  fi
   exec "$INSTALL_DIR/start.sh"
 }
 
@@ -1269,6 +1460,10 @@ main() {
     status)
       parse_options "$@"
       status_impl
+      ;;
+    diagnostics)
+      parse_options "$@"
+      diagnostics_impl
       ;;
     doctor)
       parse_options "$@"

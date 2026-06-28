@@ -50,6 +50,12 @@ Update it:
 bash bin/codex-linux update
 ```
 
+Check launch safety and feature availability without starting the app:
+
+```bash
+bash bin/codex-linux diagnostics
+```
+
 Use a DMG you already downloaded:
 
 ```bash
