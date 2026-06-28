@@ -1,0 +1,113 @@
+name: Accessibility or UX report
+description: Report accessibility, keyboard focus, cognitive load, or support-flow friction.
+title: "[Accessibility]: "
+labels: ["accessibility", "ux", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for keyboard/focus issues, screen reader or semantic label problems, color or contrast problems, motion/timing friction, ADHD/AuDHD cognitive-load issues, unclear recovery steps, and desktop metadata problems.
+
+        This project controls the Linux wrapper, launcher, diagnostics, packaging metadata, docs, and issue forms. The upstream Codex app UI is inherited and may be unavailable or unverified on Linux.
+
+        Do not paste tokens, cookies, private prompts, raw credentials, generated app files, DMGs, `app.asar`, full coredumps, or screenshots containing personal data.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-safety check
+      options:
+        - label: I removed tokens, cookies, private prompts, generated app files, and personal data from this report.
+          required: true
+        - label: I did not attach full coredumps, DMGs, extracted app bundles, `app.asar`, or screenshots containing personal data.
+          required: true
+        - label: I understand this repository is not supported by OpenAI.
+          required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      description: Choose the closest surface. Pick "Upstream Codex app UI" when the issue is inside the app after it launches.
+      options:
+        - codex-linux CLI output
+        - Diagnostics plain text or JSON
+        - Launcher or desktop-entry failure message
+        - Flatpak / Discover metadata
+        - Homebrew or source install instructions
+        - KCS, README, or support docs
+        - GitHub issue or contribution flow
+        - Upstream Codex app UI
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue type
+      options:
+        - Keyboard or focus
+        - Screen reader or semantic label
+        - Color or contrast
+        - Motion or timing
+        - Cognitive load or unclear next step
+        - ADHD / AuDHD friction
+        - Desktop launcher or metadata
+        - Documentation or support flow
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: No-launch diagnostics
+      description: Paste `bash bin/codex-linux diagnostics --json`. Review it first and redact anything sensitive.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: What made the experience hard to use?
+      description: Describe the exact text, command, click path, or UI state. Redact private paths and account details.
+      placeholder: The launcher reports a blocked launch, but the next action is unclear when inotify pressure is high.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Better outcome
+      description: State the concrete improvement. Prefer behavior or wording over broad preference.
+      placeholder: The message should name the blocked resource and point to `codex-linux diagnostics`.
+    validations:
+      required: true
+  - type: dropdown
+    id: wcag_area
+    attributes:
+      label: WCAG 2.2 area most affected
+      description: This helps triage wrapper surfaces. It is not a claim that the inherited upstream app UI has been audited.
+      options:
+        - Perceivable
+        - Operable
+        - Understandable
+        - Robust
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: session
+    attributes:
+      label: Desktop session
+      options:
+        - KDE Plasma Wayland
+        - KDE Plasma X11
+        - GNOME Wayland
+        - GNOME X11
+        - SteamOS Gaming Mode
+        - Other
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: screenshot_notes
+    attributes:
+      label: Screenshot or recording notes
+      description: Do not attach screenshots or recordings that contain personal data. Describe redactions if you attach a safe image.

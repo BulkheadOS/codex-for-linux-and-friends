@@ -52,6 +52,8 @@ Use the GitHub issue forms for public reports:
   helpers, or high inotify usage
 - Feature compatibility: Appshots, Computer Use, Automations, browser, deep
   links, Flatpak, Discover, or Homebrew behavior
+- Accessibility or UX report: keyboard/focus, screen reader or semantic label,
+  color/contrast, motion/timing, ADHD/AuDHD friction, or unclear support flow
 
 Ask reporters for `bash bin/codex-linux diagnostics --json` before requesting
 logs. Do not ask for full coredumps, generated runtimes, DMGs, extracted app

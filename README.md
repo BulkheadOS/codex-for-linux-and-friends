@@ -154,6 +154,7 @@ Start with:
 - [KCS support notes](docs/kcs/codex-linux-operations.md)
 - [Security model](docs/security-model.md)
 - [Feature parity notes](docs/feature-parity.md)
+- [Accessibility and UX notes](docs/accessibility-ux.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## Prior art

@@ -835,6 +835,7 @@ if ! grep -q 'home-directory access' README.md ||
 fi
 
 for template in \
+  .github/ISSUE_TEMPLATE/accessibility_report.yml \
   .github/ISSUE_TEMPLATE/bug_report.yml \
   .github/ISSUE_TEMPLATE/crash_report.yml \
   .github/ISSUE_TEMPLATE/feature_compatibility.yml
@@ -933,6 +934,32 @@ if ! grep -q 'High memory usage' .github/ISSUE_TEMPLATE/crash_report.yml ||
   echo "crash issue template must capture memory, inotify, and process-leak evidence" >&2
   exit 1
 fi
+
+if ! grep -q 'docs/accessibility-ux.md' README.md; then
+  echo "README must link the accessibility and UX notes" >&2
+  exit 1
+fi
+
+for term in 'WCAG 2.2' ADHD AuDHD diagnostics 'upstream app UI' 'personal data'; do
+  if ! grep -q "$term" docs/accessibility-ux.md; then
+    echo "accessibility UX notes must cover $term" >&2
+    exit 1
+  fi
+done
+
+for term in 'Feature parity notes' 'Not claimed on Linux' 'Blocked on guarded KDE Wayland' 'Inherited and unverified'; do
+  if ! grep -q "$term" docs/accessibility-ux.md; then
+    echo "accessibility UX notes must preserve non-overclaim feature status: $term" >&2
+    exit 1
+  fi
+done
+
+for term in 'diagnostics --json' 'WCAG 2.2' 'ADHD / AuDHD' 'Keyboard or focus' 'Color or contrast' 'Screen reader or semantic label' 'Motion or timing' 'personal data' screenshots; do
+  if ! grep -q "$term" .github/ISSUE_TEMPLATE/accessibility_report.yml; then
+    echo "accessibility issue template must cover $term" >&2
+    exit 1
+  fi
+done
 
 if ! grep -q 'blank_issues_enabled: false' .github/ISSUE_TEMPLATE/config.yml; then
   echo "GitHub issues should use structured templates for public safety" >&2
