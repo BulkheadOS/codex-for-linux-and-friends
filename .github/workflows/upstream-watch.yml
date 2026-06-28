@@ -23,8 +23,8 @@ jobs:
         if: ${{ !cancelled() }}
         uses: peter-evans/create-pull-request@v7
         with:
-          commit-message: chore: refresh upstream codex app metadata
-          title: Refresh upstream Codex app metadata
+          commit-message: "chore: refresh upstream codex app metadata"
+          title: "Refresh upstream Codex app metadata"
           body: |
             Automated metadata refresh for the official Codex app DMG URLs.
 
