@@ -79,12 +79,17 @@ Reproducible check:
 ```bash
 npm run verify:fediverse -- --json
 npm run verify:fediverse -- --strict-mastodon --json
+npm run verify:fediverse:mastodon-org -- --json
 ```
 
 The default check exits nonzero only when direct WebFinger, actor, or icon checks
 fail. `--strict-mastodon` also fails on remote Mastodon cache mismatches, which
 is the expected current result until Coolock's remote cached `acct` matches
 `coolockvillage@coolockvillage.ie`.
+
+The `verify:fediverse:mastodon-org` check is the strict gate for the requested
+`mastodon.org` path. It must exit `0` before this repository can claim that the
+profiles are visible from that specific third-party Mastodon surface.
 
 | Profile | Status | Evidence |
 |---|---|---|
@@ -94,7 +99,7 @@ is the expected current result until Coolock's remote cached `acct` matches
 | `@electrictown@electrictown.ie` actor/icon | External observed | `npm run verify:fediverse -- --json` reported organization actor data with name `ElectricTown`, summary, inbox/outbox, public key, icon URL `https://electrictown.ie/icon-512.png`, and `icon.status=pass` during this pass. |
 | `@electrictown@electrictown.ie` Mastodon instance search | External observed | Unauthenticated `mastodon.social` search without remote resolution returned an account with matching `acct`, display name `ElectricTown`, enriched fields, and cached avatar/header URLs during this pass. |
 | `@coolockvillage@coolockvillage.ie` Mastodon instance search | Incomplete | `npm run verify:fediverse -- --strict-mastodon --json` failed as expected because unauthenticated `mastodon.social` search returned a visible Coolock Village account with enriched fields and cached avatar/header URLs, but the cached `acct` was `Dublin@coolockvillage.ie`; exact handle consistency is not proven. |
-| `mastodon.org` direct verification | Incomplete | Direct `curl` probes to `mastodon.org` failed with a TLS internal-error alert in this environment, so the requested `mastodon.org` UI/search path was not captured. |
+| `mastodon.org` direct verification | Incomplete | `npm run verify:fediverse:mastodon-org -- --json` and direct `curl` probes to `mastodon.org` failed with a TLS internal-error alert in this environment, so the requested `mastodon.org` UI/search path was not captured. |
 | Search from a third-party Mastodon UI | Incomplete | WebFinger, actor documents, and `mastodon.social` search were observed to expose federation surfaces, but a browser-visible search from the requested `mastodon.org` UI has not been captured in this repository. |
 
 ## Completion rule

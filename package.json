@@ -10,6 +10,7 @@
     "lint:desktop": "bash tests/desktop.test.sh",
     "qa:public": "bash scripts/qa-public-safety.sh",
     "verify:fediverse": "node scripts/verify-fediverse-profiles.mjs",
+    "verify:fediverse:mastodon-org": "node scripts/verify-fediverse-profiles.mjs --mastodon-instance mastodon.org --strict-mastodon",
     "verify:openai-features": "node scripts/verify-openai-feature-support.mjs"
   },
   "license": "MIT",

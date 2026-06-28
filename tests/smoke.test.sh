@@ -950,6 +950,22 @@ if ! grep -q '"verify:fediverse"' package.json; then
   exit 1
 fi
 
+if ! grep -q '"verify:fediverse:mastodon-org"' package.json; then
+  echo "package scripts must expose the strict mastodon.org profile verifier" >&2
+  exit 1
+fi
+
+node - <<'NODE'
+const { scripts } = require("./package.json");
+const command = scripts["verify:fediverse:mastodon-org"] || "";
+for (const term of ["--mastodon-instance mastodon.org", "--strict-mastodon"]) {
+  if (!command.includes(term)) {
+    console.error(`strict mastodon.org verifier must include ${term}`);
+    process.exit(1);
+  }
+}
+NODE
+
 if ! grep -q '"verify:openai-features"' package.json; then
   echo "package scripts must expose the OpenAI feature support verifier" >&2
   exit 1
@@ -995,6 +1011,7 @@ for term in \
   'Pobal-os is outside this repo' \
   'npm run verify:fediverse -- --json' \
   'npm run verify:fediverse -- --strict-mastodon --json' \
+  'npm run verify:fediverse:mastodon-org -- --json' \
   'session-clear'
 do
   if ! grep -Fq "$term" docs/goal-evidence.md; then
@@ -1007,7 +1024,7 @@ for row in \
   '| `@electrictown@electrictown.ie` Mastodon instance search | External observed | Unauthenticated `mastodon.social` search without remote resolution returned an account with matching `acct`' \
   '| `@coolockvillage@coolockvillage.ie` Mastodon instance search | Incomplete | `npm run verify:fediverse -- --strict-mastodon --json` failed as expected' \
   'cached `acct` was `Dublin@coolockvillage.ie`; exact handle consistency is not proven' \
-  '| `mastodon.org` direct verification | Incomplete | Direct `curl` probes to `mastodon.org` failed with a TLS internal-error alert'
+  '| `mastodon.org` direct verification | Incomplete | `npm run verify:fediverse:mastodon-org -- --json` and direct `curl` probes to `mastodon.org` failed with a TLS internal-error alert'
 do
   if ! grep -Fq "$row" docs/goal-evidence.md; then
     echo "goal evidence matrix must preserve exact Mastodon evidence boundary: $row" >&2

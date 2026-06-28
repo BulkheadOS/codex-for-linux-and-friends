@@ -54,12 +54,18 @@ function profileFixture(profile) {
   };
 }
 
-function mastodonSearchUrl(profile) {
+function mastodonSearchUrl(profile, instance = "mastodon.social") {
   const handle = `${profile.username}@${profile.host}`;
-  return `https://mastodon.social/api/v2/search?q=${encodeURIComponent(`@${handle}`)}&type=accounts`;
+  return `https://${instance}/api/v2/search?q=${encodeURIComponent(`@${handle}`)}&type=accounts`;
 }
 
-function baseRoutes({ profile = electricProfile, mastodonAccount, actorOverrides = {}, iconHeadStatus = 200 }) {
+function baseRoutes({
+  profile = electricProfile,
+  mastodonAccount,
+  mastodonInstance = "mastodon.social",
+  actorOverrides = {},
+  iconHeadStatus = 200,
+}) {
   const handle = `${profile.username}@${profile.host}`;
   const actorUrl = `https://${profile.host}/ap/actor`;
   const fixture = profileFixture(profile);
@@ -97,7 +103,7 @@ function baseRoutes({ profile = electricProfile, mastodonAccount, actorOverrides
     [`GET ${fixture.iconUrl}`]: response("", {
       contentType: "image/png",
     }),
-    [`GET ${mastodonSearchUrl(profile)}`]: response({
+    [`GET ${mastodonSearchUrl(profile, mastodonInstance)}`]: response({
       accounts: mastodonAccount ? [mastodonAccount] : [],
       statuses: [],
       hashtags: [],
@@ -189,6 +195,56 @@ test("strict Mastodon mode fails on account mismatch", async () => {
 
   assert.equal(result.ok, false);
   assert.equal(result.mastodon.status, "warning");
+});
+
+test("uses the configured Mastodon instance for account search", async () => {
+  const result = await checkProfile(electricProfile, {
+    mastodonInstance: "mastodon.example",
+    fetchImpl: makeFetch(
+      baseRoutes({
+        mastodonInstance: "mastodon.example",
+        mastodonAccount: {
+          acct: "electrictown@electrictown.ie",
+          display_name: "ElectricTown",
+          uri: "https://electrictown.ie/ap/actor",
+          avatar: "https://files.mastodon.example/cache/electrictown.png",
+          fields: [],
+        },
+      }),
+    ),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.mastodon.instance, "mastodon.example");
+  assert.match(result.mastodon.searchUrl, /^https:\/\/mastodon\.example\/api\/v2\/search/);
+  assert.equal(result.mastodon.status, "pass");
+});
+
+test("strict Mastodon mode fails when the configured instance is blocked", async () => {
+  const routes = baseRoutes({
+    mastodonInstance: "mastodon.org",
+    mastodonAccount: {
+      acct: "electrictown@electrictown.ie",
+      display_name: "ElectricTown",
+      uri: "https://electrictown.ie/ap/actor",
+      avatar: "https://files.mastodon.example/cache/electrictown.png",
+      fields: [],
+    },
+  });
+  routes["GET https://mastodon.org/api/v2/search?q=%40electrictown%40electrictown.ie&type=accounts"] = async () => {
+    throw new TypeError("fetch failed", { cause: new Error("tlsv1 alert internal error") });
+  };
+
+  const result = await checkProfile(electricProfile, {
+    mastodonInstance: "mastodon.org",
+    strictMastodon: true,
+    fetchImpl: makeFetch(routes),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.mastodon.status, "blocked");
+  assert.match(result.mastodon.failures.join("\n"), /fetch failed: tlsv1 alert internal error/);
+  assert.doesNotMatch(result.mastodon.failures[0], /\n/);
 });
 
 test("fails when direct actor icon is missing", async () => {

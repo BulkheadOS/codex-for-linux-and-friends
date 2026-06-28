@@ -26,6 +26,21 @@ function headerValue(response, name) {
   return response.headers?.get?.(name) || response.headers?.get?.(name.toLowerCase()) || "";
 }
 
+function fetchErrorMessage(error, timeoutMs) {
+  if (error.name === "AbortError") {
+    return `timeout after ${timeoutMs}ms`;
+  }
+
+  const causeMessage = error.cause?.message || error.cause?.code || "";
+  const message = (causeMessage ? `${error.message}: ${causeMessage}` : error.message)
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/tlsv1 alert internal error/i.test(message)) {
+    return "fetch failed: tlsv1 alert internal error";
+  }
+  return message;
+}
+
 async function fetchJson(url, { fetchImpl, timeoutMs, headers = {} }) {
   const { controller, timer } = withTimeout(timeoutMs);
   try {
@@ -58,7 +73,7 @@ async function fetchJson(url, { fetchImpl, timeoutMs, headers = {} }) {
       ok: false,
       status: 0,
       url,
-      error: error.name === "AbortError" ? `timeout after ${timeoutMs}ms` : error.message,
+      error: fetchErrorMessage(error, timeoutMs),
     };
   } finally {
     clearTimeout(timer);
@@ -87,7 +102,7 @@ async function fetchStatusRequest(url, { fetchImpl, timeoutMs, method, headers =
       status: 0,
       url,
       method,
-      error: error.name === "AbortError" ? `timeout after ${timeoutMs}ms` : error.message,
+      error: fetchErrorMessage(error, timeoutMs),
     };
   } finally {
     clearTimeout(timer);

@@ -62,6 +62,14 @@ Refresh official OpenAI feature-support evidence before changing public claims:
 npm run verify:openai-features -- --json
 ```
 
+Check the public Fediverse profile evidence, including the strict requested
+`mastodon.org` path:
+
+```bash
+npm run verify:fediverse -- --json
+npm run verify:fediverse:mastodon-org -- --json
+```
+
 Use a DMG you already downloaded:
 
 ```bash
