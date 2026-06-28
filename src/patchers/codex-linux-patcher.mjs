@@ -215,19 +215,28 @@ function patchWindowHints(root) {
 
   const filePath = path.join(buildDir, mainBundle);
   let source = read(filePath);
-  if (source.includes(`${marker}WindowHints`)) {
-    return;
-  }
+  const hasWindowHintsMarker = source.includes(`${marker}WindowHints`);
 
   const iconExpression = `require("node:path").join(process.resourcesPath,"..","content","webview","assets","${iconAsset}")`;
   const replacementComment = `/* ${marker}WindowHints */`;
+  const listenerLimitMarker = `${marker}WebContentsListenerLimit`;
 
   const readyNeedle = "D.once(`ready-to-show`,()=>{";
   if (source.includes(readyNeedle) && !source.includes("D.setIcon(")) {
     source = source.replace(readyNeedle, `process.platform===\`linux\`&&D.setIcon(${iconExpression}),${readyNeedle}`);
   }
 
-  if (!source.includes(replacementComment)) {
+  const registerWindowNeedle = "registerWindow(e,t,n,r,i){let a=e.id,o=e.webContents.id;";
+  if (!source.includes(listenerLimitMarker)) {
+    source = replaceOnce(
+      source,
+      registerWindowNeedle,
+      `registerWindow(e,t,n,r,i){process.platform===\`linux\`&&(()=>{const t=e.webContents?.getMaxListeners?.();t!==0&&e.webContents?.setMaxListeners?.(Math.max(t??10,30))})();/* ${listenerLimitMarker} */let a=e.id,o=e.webContents.id;`,
+      "WebContents listener limit insertion point",
+    );
+  }
+
+  if (!hasWindowHintsMarker && !source.includes(replacementComment)) {
     source = `${replacementComment}\n${source}`;
   }
 

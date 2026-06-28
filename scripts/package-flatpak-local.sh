@@ -18,6 +18,8 @@ Usage: scripts/package-flatpak-local.sh
 Build a local Flatpak bundle from an already generated Codex for Linux runtime.
 This is for personal/local installation only. Do not upload the generated bundle
 unless you have rights to redistribute the upstream app contents.
+The local manifest grants home-directory access so Codex can open the projects
+you choose.
 
 Environment:
   CODEX_LINUX_INSTALL_DIR       Existing runtime directory to package.
@@ -61,4 +63,8 @@ Install locally:
   flatpak install --user "$BUNDLE_PATH"
 
 KDE Discover can manage the installed app after it is installed through Flatpak.
+
+Warning:
+  This local Flatpak grants home-directory access so Codex can open your chosen
+  project paths. Keep the bundle private unless you have redistribution rights.
 EOF

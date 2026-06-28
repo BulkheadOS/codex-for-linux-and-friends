@@ -29,7 +29,10 @@ function fixture() {
     ].join("\n"),
   );
   writeFile(path.join(root, ".vite/build/bootstrap.js"), "process._linkedBinding('electron_common_owl_features');\n");
-  writeFile(path.join(root, ".vite/build/main.js"), "process.platform===`win32`;D.once(`ready-to-show`,()=>{});\n");
+  writeFile(
+    path.join(root, ".vite/build/main.js"),
+    "process.platform===`win32`;D.once(`ready-to-show`,()=>{});registerWindow(e,t,n,r,i){let a=e.id,o=e.webContents.id;}\n",
+  );
   writeFile(path.join(root, "webview/assets/app-test.png"), "");
   return root;
 }
@@ -63,4 +66,8 @@ test("patcher is idempotent for marker-based patches", async () => {
   const main = fs.readFileSync(path.join(root, ".vite/build/main.js"), "utf8");
   const markerMatches = main.match(/codexForLinuxPatchedWindowHints/g) || [];
   assert.equal(markerMatches.length, 1);
+  const listenerMatches = main.match(/codexForLinuxPatchedWebContentsListenerLimit/g) || [];
+  assert.equal(listenerMatches.length, 1);
+  assert.match(main, /setMaxListeners/);
+  assert.match(main, /t!==0/);
 });

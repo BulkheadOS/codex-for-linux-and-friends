@@ -81,6 +81,10 @@ KDE Discover can manage the installed Flatpak after it is installed. Do not uplo
 the generated bundle unless you have the rights to redistribute the upstream app
 contents.
 
+The local Flatpak currently grants home-directory access so Codex can open the
+projects you choose. Treat the generated bundle as a private local install, not a
+public redistributable artifact.
+
 Flathub or public Discover distribution needs a stricter `extra-data` packaging
 track and clear redistribution approval. See [packaging notes](docs/packaging.md).
 
@@ -89,13 +93,13 @@ track and clear redistribution approval. See [packaging notes](docs/packaging.md
 Kubuntu, Ubuntu, Linux Mint:
 
 ```bash
-sudo apt install curl unzip p7zip-full python3 build-essential desktop-file-utils
+sudo apt install coreutils curl unzip p7zip-full python3 build-essential desktop-file-utils
 ```
 
 SteamOS, Arch, Manjaro:
 
 ```bash
-sudo pacman -S --needed curl unzip p7zip python base-devel desktop-file-utils
+sudo pacman -S --needed coreutils curl unzip p7zip python base-devel desktop-file-utils
 ```
 
 You also need Node.js 20+ with `npm` and `npx`, plus an installed Codex CLI:

@@ -5,7 +5,9 @@
   <summary>Unofficial local Linux compatibility launcher for the OpenAI Codex desktop app</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
-  <developer_name>BulkheadOS contributors</developer_name>
+  <developer id="com.bulkheados">
+    <name>BulkheadOS contributors</name>
+  </developer>
   <description>
     <p>
       Codex for Linux and friends builds a private Linux runtime from an official
@@ -15,6 +17,10 @@
     <p>
       The compatibility layer is experimental and can break when upstream app
       internals change.
+    </p>
+    <p>
+      The local Flatpak build grants home-directory access so Codex can open the
+      projects you choose. Treat generated bundles as private local artifacts.
     </p>
   </description>
   <launchable type="desktop-id">com.bulkheados.CodexForLinux.desktop</launchable>

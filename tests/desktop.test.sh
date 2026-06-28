@@ -14,3 +14,13 @@ sed \
 
 desktop-file-validate "$tmp/codex-for-linux.desktop"
 desktop-file-validate packaging/flatpak/com.bulkheados.CodexForLinux.desktop
+
+if ! grep -q '^Exec=.*%u' "$tmp/codex-for-linux.desktop"; then
+  echo "generated desktop entry must pass registered codex: URLs to the launcher" >&2
+  exit 1
+fi
+
+if ! grep -q '^Exec=.*%u' packaging/flatpak/com.bulkheados.CodexForLinux.desktop; then
+  echo "Flatpak desktop entry must pass registered codex: URLs to the launcher" >&2
+  exit 1
+fi

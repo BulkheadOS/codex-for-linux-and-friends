@@ -5,10 +5,15 @@ class CodexForLinux < Formula
 
   head "https://github.com/BulkheadOS/codex-for-linux-and-friends.git", branch: "main"
 
+  depends_on "coreutils"
+  depends_on "curl"
+  depends_on "gcc"
+  depends_on "make"
   depends_on "node"
   depends_on "p7zip"
   depends_on "python@3.12"
   depends_on "unzip"
+  depends_on "util-linux"
 
   def install
     libexec.install "bin"
@@ -27,6 +32,9 @@ class CodexForLinux < Formula
     <<~EOS
       This formula installs only the unofficial builder/updater.
       It does not install or redistribute the OpenAI Codex app.
+
+      Before building the private runtime, verify host dependencies with:
+        codex-linux doctor
 
       Build your private runtime with:
         codex-linux install

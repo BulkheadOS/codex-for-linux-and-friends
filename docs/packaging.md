@@ -26,6 +26,11 @@ flatpak install --user dist/flatpak/codex-for-linux.flatpak
 The output bundle can contain upstream app artifacts. Keep it private unless you
 have redistribution rights.
 
+The local manifest grants `--filesystem=home` home-directory access because the
+upstream Codex app needs to access user-selected project paths. This is broad
+local file access. Warn users before install, keep the bundle private, and
+revisit narrower portal or per-path permissions before any public Flatpak track.
+
 ## Discover
 
 KDE Discover can manage installed Flatpak apps. The local path is:

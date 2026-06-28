@@ -92,6 +92,10 @@ Environment:
   CODEX_BETTER_SQLITE3_VERSION Override better-sqlite3 rebuild version.
   CODEX_LINUX_CC              Override the C compiler used for native rebuilds.
   CODEX_LINUX_CXX             Override the C++ compiler used for native rebuilds.
+  CODEX_KDE_WAYLAND_ALLOW_UNSAFE
+                              Unsafe maintainer-only KDE Wayland crash-guard override.
+  CODEX_KWIN_ALLOW_UNSAFE     Alias for CODEX_KDE_WAYLAND_ALLOW_UNSAFE.
+  CODEX_WEBVIEW_PORT          Local webview helper port, default 5175.
   CODEX_LINUX_OUTPUT_ROOT     Runtime output root.
   CODEX_LINUX_INSTALL_DIR     Runtime install directory.
   CODEX_LINUX_CACHE_DIR       Download cache directory.
@@ -133,9 +137,9 @@ parse_options() {
 package_hint() {
   cat <<'EOF'
 Install required tools with one of:
-  Ubuntu/Kubuntu/Linux Mint: sudo apt install curl unzip p7zip-full python3 build-essential desktop-file-utils
-  SteamOS/Arch/Manjaro:      sudo pacman -S --needed curl unzip p7zip python base-devel desktop-file-utils
-  Fedora:                   sudo dnf install curl unzip p7zip p7zip-plugins python3 make gcc-c++ desktop-file-utils
+  Ubuntu/Kubuntu/Linux Mint: sudo apt install coreutils curl unzip p7zip-full python3 build-essential desktop-file-utils
+  SteamOS/Arch/Manjaro:      sudo pacman -S --needed coreutils curl unzip p7zip python base-devel desktop-file-utils
+  Fedora:                   sudo dnf install coreutils curl unzip p7zip p7zip-plugins python3 make gcc-c++ desktop-file-utils
 
 Node.js 20+ with npm/npx is also required. Homebrew, fnm, nvm, asdf, or your distro
 packages are all fine as long as node, npm, and npx are on PATH.
@@ -166,7 +170,7 @@ doctor_impl() {
 
   [ "$(uname -s)" = "Linux" ] || die "This builder is intended to run on Linux."
 
-  for cmd in curl node npm npx python3 unzip make; do
+  for cmd in curl node npm npx python3 unzip make setsid sha256sum; do
     require_command "$cmd" || missing+=("$cmd")
   done
 
@@ -567,6 +571,11 @@ download_electron_runtime() {
   local electron_arch
   local electron_zip
   local electron_url
+  local electron_shasums
+  local electron_shasums_url
+  local electron_zip_name
+  local expected_sha256
+  local actual_sha256
 
   case "$(uname -m)" in
     x86_64|amd64)
@@ -581,18 +590,37 @@ download_electron_runtime() {
   esac
 
   electron_zip="$CACHE_DIR/electron-v${electron_version}-linux-${electron_arch}.zip"
+  electron_zip_name="$(basename "$electron_zip")"
   electron_url="https://github.com/electron/electron/releases/download/v${electron_version}/electron-v${electron_version}-linux-${electron_arch}.zip"
+  electron_shasums="$CACHE_DIR/electron-v${electron_version}-SHASUMS256.txt"
+  electron_shasums_url="https://github.com/electron/electron/releases/download/v${electron_version}/SHASUMS256.txt"
 
   assert_safe_install_dir "$INSTALL_DIR"
   rm -rf "$INSTALL_DIR"
   mkdir -p "$INSTALL_DIR"
 
+  if [ ! -s "$electron_shasums" ]; then
+    log "Downloading Electron SHASUMS256.txt for v${electron_version}."
+    curl -L --fail --show-error --connect-timeout 30 --max-time 120 -o "$electron_shasums" "$electron_shasums_url"
+  else
+    log "Using cached Electron SHASUMS256.txt: $electron_shasums"
+  fi
+
   if [ ! -s "$electron_zip" ]; then
     log "Downloading Electron runtime v${electron_version} for linux-${electron_arch}."
-    curl -L --progress-bar --connect-timeout 30 --max-time 1200 -o "$electron_zip" "$electron_url"
+    curl -L --fail --show-error --progress-bar --connect-timeout 30 --max-time 1200 -o "$electron_zip" "$electron_url"
   else
     log "Using cached Electron runtime: $electron_zip"
   fi
+
+  expected_sha256="$(awk -v file="$electron_zip_name" '$2 == file || $2 == "*" file { print $1 }' "$electron_shasums" | head -n 1)"
+  [ -n "$expected_sha256" ] || die "Electron checksum not found for $electron_zip_name in $electron_shasums."
+  actual_sha256="$(sha256sum "$electron_zip" | awk '{ print $1 }')"
+  if [ "$actual_sha256" != "$expected_sha256" ]; then
+    rm -f "$electron_zip"
+    die "Electron runtime checksum mismatch for $electron_zip_name."
+  fi
+  log "Verified Electron runtime checksum: $electron_zip_name"
 
   (
     cd "$INSTALL_DIR"
@@ -642,6 +670,11 @@ LOG_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/codex-for-linux"
 WEBVIEW_PORT="${CODEX_WEBVIEW_PORT:-5175}"
 WEBVIEW_PID_FILE="$STATE_DIR/webview.pid"
 LAUNCHER_LOG_FILE="$LOG_DIR/launcher.log"
+ELECTRON_PID=""
+ELECTRON_HAS_PROCESS_GROUP=0
+ELECTRON_PROCESS_GROUP_ID=""
+WEBVIEW_SERVER_STARTED=0
+CRASHPAD_BASELINE_PIDS=""
 
 mkdir -p "$STATE_DIR" "$LOG_DIR"
 
@@ -709,12 +742,93 @@ clear_stale_webview_pid() {
 
 stop_webview_server() {
   local pid
+  if [ "${WEBVIEW_SERVER_STARTED:-0}" != "1" ]; then
+    return
+  fi
   pid="$(cat "$WEBVIEW_PID_FILE" 2>/dev/null || true)"
   if [ -n "$pid" ]; then
     launcher_log "Stopping local webview server pid=$pid"
     kill "$pid" 2>/dev/null || true
   fi
   rm -f "$WEBVIEW_PID_FILE"
+  WEBVIEW_SERVER_STARTED=0
+}
+
+stop_electron() {
+  local pid="$ELECTRON_PID"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    if [ "${ELECTRON_HAS_PROCESS_GROUP:-0}" = "1" ]; then
+      ELECTRON_PROCESS_GROUP_ID="$pid"
+      launcher_log "Stopping Electron process group pid=$pid"
+      kill -TERM -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    else
+      launcher_log "Stopping Electron pid=$pid"
+      kill "$pid" 2>/dev/null || true
+    fi
+    wait "$pid" 2>/dev/null || true
+  fi
+  ELECTRON_PID=""
+  ELECTRON_HAS_PROCESS_GROUP=0
+}
+
+snapshot_crashpad_handlers() {
+  local pid
+  local pgid
+  local cmd
+
+  CRASHPAD_BASELINE_PIDS=""
+  while read -r pid pgid cmd; do
+    case "$cmd" in
+      "$SCRIPT_DIR/chrome_crashpad_handler"|"$SCRIPT_DIR/chrome_crashpad_handler "*)
+        CRASHPAD_BASELINE_PIDS="${CRASHPAD_BASELINE_PIDS}${CRASHPAD_BASELINE_PIDS:+ }$pid"
+        ;;
+    esac
+  done < <(ps -eo pid=,pgid=,args=)
+}
+
+crashpad_pid_was_preexisting() {
+  local target="$1"
+  local existing
+
+  for existing in $CRASHPAD_BASELINE_PIDS; do
+    [ "$existing" = "$target" ] && return 0
+  done
+
+  return 1
+}
+
+stop_crashpad_handlers() {
+  local pid
+  local pgid
+  local cmd
+
+  ps -eo pid=,pgid=,args= | while read -r pid pgid cmd; do
+    case "$cmd" in
+      "$SCRIPT_DIR/chrome_crashpad_handler"|"$SCRIPT_DIR/chrome_crashpad_handler "*)
+        if [ -n "${ELECTRON_PROCESS_GROUP_ID:-}" ] && [ "$pgid" != "$ELECTRON_PROCESS_GROUP_ID" ]; then
+          continue
+        fi
+        if [ -z "${ELECTRON_PROCESS_GROUP_ID:-}" ] && crashpad_pid_was_preexisting "$pid"; then
+          continue
+        fi
+        launcher_log "Stopping crashpad handler pid=$pid"
+        kill "$pid" 2>/dev/null || true
+        ;;
+    esac
+  done
+}
+
+cleanup_launcher() {
+  stop_electron
+  stop_crashpad_handlers
+  stop_webview_server
+}
+
+handle_launcher_signal() {
+  local status="$1"
+  trap - EXIT INT TERM
+  cleanup_launcher
+  exit "$status"
 }
 
 start_webview_server() {
@@ -734,11 +848,11 @@ start_webview_server() {
   launcher_log "Starting local webview server on 127.0.0.1:$WEBVIEW_PORT"
   (
     cd "$WEBVIEW_DIR"
-    python3 -m http.server "$WEBVIEW_PORT" --bind 127.0.0.1 >/dev/null 2>&1
+    exec python3 -m http.server "$WEBVIEW_PORT" --bind 127.0.0.1 >/dev/null 2>&1
   ) &
 
   echo "$!" >"$WEBVIEW_PID_FILE"
-  trap stop_webview_server EXIT INT TERM
+  WEBVIEW_SERVER_STARTED=1
 
   for attempt in $(seq 1 50); do
     if port_open; then
@@ -748,8 +862,58 @@ start_webview_server() {
   done
 
   echo "Failed to start local webview server on 127.0.0.1:$WEBVIEW_PORT" >&2
+  echo "See launcher log: $LAUNCHER_LOG_FILE" >&2
+  echo "Check the port owner: ss -ltnp 'sport = :$WEBVIEW_PORT'" >&2
+  echo "Or retry with another port: CODEX_WEBVIEW_PORT=5176 codex-linux launch" >&2
   launcher_log "Failed to start local webview server on 127.0.0.1:$WEBVIEW_PORT"
   return 1
+}
+
+is_wayland_session() {
+  [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]
+}
+
+is_kde_wayland_session() {
+  local desktop_values
+  local desktop_lc
+
+  is_wayland_session || return 1
+
+  if [ "${KDE_FULL_SESSION:-}" = "true" ] || [ -n "${KDE_SESSION_VERSION:-}" ]; then
+    return 0
+  fi
+
+  desktop_values="${XDG_CURRENT_DESKTOP:-}:${XDG_SESSION_DESKTOP:-}:${DESKTOP_SESSION:-}"
+  desktop_lc="$(printf '%s' "$desktop_values" | tr '[:upper:]' '[:lower:]')"
+  case "$desktop_lc" in
+    *kde*|*plasma*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+kde_wayland_unsafe_allowed() {
+  [ "${CODEX_KDE_WAYLAND_ALLOW_UNSAFE:-0}" = "1" ] || [ "${CODEX_KWIN_ALLOW_UNSAFE:-0}" = "1" ]
+}
+
+block_kde_wayland_launch() {
+  local message
+  message="Codex for Linux refused to launch on KDE Wayland because this runtime has been observed to crash KWin."
+
+  echo "$message" >&2
+  echo "This guard prevents a compositor restart. See $LAUNCHER_LOG_FILE." >&2
+  echo "Use a non-KDE Wayland session or an X11 session for normal use." >&2
+  echo "Set CODEX_KDE_WAYLAND_ALLOW_UNSAFE=1 only for controlled maintainer testing in a disposable session." >&2
+  launcher_log "$message"
+
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send \
+      "Codex for Linux blocked" \
+      "KDE Wayland crash guard refused to launch. Use X11/non-KDE Wayland, or see the launcher log." \
+      >/dev/null 2>&1 || true
+  fi
 }
 
 main() {
@@ -768,17 +932,39 @@ main() {
   export CHROME_DESKTOP="${CHROME_DESKTOP:-codex-for-linux.desktop}"
   unset ELECTRON_RUN_AS_NODE
 
-  start_webview_server
-
   local session_is_wayland=0
-  if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
+  local session_is_kde_wayland=0
+  if is_wayland_session; then
     session_is_wayland=1
   fi
+  if is_kde_wayland_session; then
+    session_is_kde_wayland=1
+  fi
+
+  if [ "$session_is_kde_wayland" -eq 1 ] && ! kde_wayland_unsafe_allowed; then
+    block_kde_wayland_launch
+    exit 78
+  fi
+
+  trap cleanup_launcher EXIT
+  trap 'handle_launcher_signal 130' INT
+  trap 'handle_launcher_signal 143' TERM
+
+  start_webview_server
 
   local ozone_platform
   local ozone_platform_hint
-  if [ "$session_is_wayland" -eq 1 ]; then
-    ozone_platform="${CODEX_OZONE_PLATFORM:-wayland}"
+  if [ "$session_is_kde_wayland" -eq 1 ]; then
+    # Maintainer override path only. Prefer native Wayland here to avoid the
+    # XWayland XCB SHAPE/Input path implicated by KWin crash logs. Do not let
+    # CODEX_OZONE_PLATFORM=x11 re-enter that path under the normal override.
+    ozone_platform="wayland"
+    ozone_platform_hint="${CODEX_OZONE_PLATFORM_HINT:-auto}"
+  elif [ "$session_is_wayland" -eq 1 ]; then
+    # Prefer the same XWayland-compatible default as the working community
+    # launchers. Native Wayland can swallow text focus on some KDE/Plasma
+    # setups; users can still opt in with CODEX_OZONE_PLATFORM=wayland.
+    ozone_platform="${CODEX_OZONE_PLATFORM:-x11}"
     ozone_platform_hint="${CODEX_OZONE_PLATFORM_HINT:-auto}"
   else
     ozone_platform="${CODEX_OZONE_PLATFORM:-x11}"
@@ -798,20 +984,33 @@ main() {
     )
   fi
 
-  if [ "$ozone_platform" = "wayland" ]; then
-    # Keep standard Wayland input version
+  if [ "$ozone_platform" = "wayland" ] && { [ "${CODEX_WAYLAND_TEXT_INPUT:-0}" = "1" ] || [ "$session_is_kde_wayland" -eq 1 ]; }; then
+    # Native Wayland text input remains opt-in until physical keyboard focus is
+    # reliable across the target Linux desktops. KDE Wayland only reaches this
+    # branch behind the explicit KWin crash-risk override.
     extra_flags+=("--wayland-text-input-version=3")
   fi
 
-  "$SCRIPT_DIR/electron" \
+  snapshot_crashpad_handlers
+
+  setsid "$SCRIPT_DIR/electron" \
     --no-sandbox \
     --class=codex-for-linux \
     --app-id=com.bulkheados.CodexForLinux \
     --ozone-platform="$ozone_platform" \
     --ozone-platform-hint="$ozone_platform_hint" \
     --disable-gpu-sandbox \
-    ${extra_flags[@]+"${extra_flags[@]}"} \
-    "$@"
+    "${extra_flags[@]}" \
+    "$@" &
+  ELECTRON_PID="$!"
+  ELECTRON_HAS_PROCESS_GROUP=1
+  ELECTRON_PROCESS_GROUP_ID="$ELECTRON_PID"
+
+  local electron_status=0
+  wait "$ELECTRON_PID" || electron_status="$?"
+  ELECTRON_PID=""
+  ELECTRON_HAS_PROCESS_GROUP=0
+  return "$electron_status"
 }
 
 main "$@"

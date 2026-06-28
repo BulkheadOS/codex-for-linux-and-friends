@@ -15,12 +15,29 @@ const linuxOpenTargetDefinitions = openCommandName => [
   "__codexLinuxZed={id:`zed`,platforms:{linux:{label:`Zed`,icon:`apps/zed.png`,kind:`editor`,detect:()=>W(`zed`),args:__codexLinuxOpenTargetColonArgs}}}",
   "__codexLinuxNvim={id:`nvim`,platforms:{linux:{label:`Neovim`,icon:`apps/terminal.png`,kind:`editor`,detect:()=>W(`nvim`),args:__codexLinuxOpenTargetNvimArgs,open:__codexLinuxOpenTargetRunNvim}}}"
 ].join(",");
+const linuxOpenTargetWorkerDefinitions = pathLookupName => [
+  `var __codexLinuxWorkerVSCode={id:\`vscode\`,platforms:{linux:{label:\`VS Code\`,icon:\`apps/vscode.png\`,kind:\`editor\`,detect:()=>${pathLookupName}(\`code\`)}}}`,
+  `__codexLinuxWorkerVSCodeInsiders={id:\`vscodeInsiders\`,platforms:{linux:{label:\`VS Code Insiders\`,icon:\`apps/vscode-insiders.png\`,kind:\`editor\`,detect:()=>${pathLookupName}(\`code-insiders\`)}}}`,
+  `__codexLinuxWorkerCursor={id:\`cursor\`,platforms:{linux:{label:\`Cursor\`,icon:\`apps/cursor.png\`,kind:\`editor\`,detect:()=>${pathLookupName}(\`cursor\`)}}}`,
+  `__codexLinuxWorkerZed={id:\`zed\`,platforms:{linux:{label:\`Zed\`,icon:\`apps/zed.png\`,kind:\`editor\`,detect:()=>${pathLookupName}(\`zed\`)}}}`,
+  `__codexLinuxWorkerNvim={id:\`nvim\`,platforms:{linux:{label:\`Neovim\`,icon:\`apps/terminal.png\`,kind:\`editor\`,detect:()=>${pathLookupName}(\`nvim\`)}}}`
+].join(",");
 const openTargetMapRegex =
   /targets:\[\.\.\.([A-Za-z_$][\w$]*)\.map\(\(\{id:([A-Za-z_$][\w$]*),label:([A-Za-z_$][\w$]*),icon:([A-Za-z_$][\w$]*),kind:([A-Za-z_$][\w$]*),hidden:([A-Za-z_$][\w$]*)\}\)=>\(\{id:\2,target:\2,label:\3,icon:\4,kind:\5,hidden:\6,available:([A-Za-z_$][\w$]*)\.has\(\2\),default:([A-Za-z_$][\w$]*)===\2\|\|void 0\}\)\),\.\.\.([A-Za-z_$][\w$]*)\]/;
+const openTargetWorkerRegistryRegex =
+  /var ([A-Za-z_$][\w$]*)=new Map\(\[[^\]]+\]\.flatMap\(e=>\{let t=e\.platforms\[process\.platform\];return t==null\?\[\]:\[\[e\.id,\{id:e\.id,\.\.\.t\}\]\]\}\)\);/;
 const linuxTransparencyPatchedRegex =
   /frame:[A-Za-z_$][\w$]*===`linux`,transparent:[A-Za-z_$][\w$]*===`linux`\?!1:[A-Za-z_$][\w$]*,hasShadow:/;
 const linuxTransparencyPatchRegex =
   /function ([A-Za-z_$][\w$]*)\(\{alwaysOnTop:([A-Za-z_$][\w$]*),hasShadow:([A-Za-z_$][\w$]*)=!0,platform:([A-Za-z_$][\w$]*),resizable:([A-Za-z_$][\w$]*),thickFrame:([A-Za-z_$][\w$]*),transparent:([A-Za-z_$][\w$]*)=!0\}\)\{return\{frame:!1,transparent:\7,hasShadow:\3,/;
+const linuxPrimaryTitlebarPatchedRegex =
+  /case`primary`:return [^;]+?===`win32`\?\{titleBarStyle:`hidden`,titleBarOverlay:[A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*\)\}:\{titleBarStyle:`default`\}/;
+const linuxPrimaryTitlebarPatchRegex =
+  /case`primary`:return [^;]+?([A-Za-z_$][\w$]*)===`win32`\|\|\1===`linux`\?\{titleBarStyle:`hidden`,titleBarOverlay:([A-Za-z_$][\w$]*)\(([A-Za-z_$][\w$]*)\)\}:\{titleBarStyle:`default`\}/;
+const linuxTitlebarOverlayZoomBefore = ":(process.platform===`win32`||process.platform===`linux`)&&(";
+const linuxTitlebarOverlayZoomAfter = ":process.platform===`win32`&&(";
+const linuxTitlebarOverlaySyncBefore = "if(process.platform!==`win32`&&process.platform!==`linux`||";
+const linuxTitlebarOverlaySyncAfter = "if(process.platform!==`win32`||";
 const owlFeatureBindingRegex =
   /function ([A-Za-z_$][\w$]*)\(\)\{let ([A-Za-z_$][\w$]*)=process\._linkedBinding;if\(typeof \2!=`function`\)throw Error\(`Owl feature binding is unavailable`\);return ([A-Za-z_$][\w$]*)\.parse\(\2\.call\(process,`electron_common_owl_features`\)\)\}/;
 const owlFeatureFallbackMarker = "__codexLinuxOwlFeatureFallback";
@@ -28,6 +45,8 @@ const dynamicToolSchemaContractMarker = "__codexLinuxDynamicToolSchemaContract";
 const dynamicToolStartResponseMarker = "__codexLinuxNormalizeDynamicToolsForThreadStart";
 const dynamicToolThreadStartRequestMarker = "__codexLinuxNormalizeThreadStartRequestParams";
 const dynamicToolThreadStartBridgeMarker = "__codexLinuxNormalizeThreadStartBridgeRequest";
+const linuxOpenTargetWorkerMarker = "__codexLinuxWorkerVSCode";
+const linuxRecursiveFileWatchMarker = "__codexLinuxRecursiveWatch";
 
 export class UpstreamPatchContractError extends Error {
   constructor(contractName, message, options = {}) {
@@ -99,6 +118,29 @@ export const upstreamPatchContracts = [
     assertBefore: assertLinuxWindowTransparencyBefore,
     apply: patchLinuxWindowTransparency,
     assertAfter: assertLinuxWindowTransparencyAfter
+  },
+  // Why: Electron's hidden titlebar path can produce unmanaged XWayland
+  // windows on KDE/KWin, leaving mouse clicks visible but keyboard focus in the
+  // previous app. Contract: the primary-window options switch still routes
+  // Linux through the same hidden titlebar branch as Windows before patching.
+  {
+    name: "linux-primary-titlebar",
+    find: findLinuxPrimaryTitlebarPatch,
+    assertBefore: assertLinuxPrimaryTitlebarBefore,
+    apply: patchLinuxPrimaryTitlebar,
+    assertAfter: assertLinuxPrimaryTitlebarAfter
+  },
+  // Why: the primary constructor patch is not enough if runtime zoom/theme
+  // handlers later call setTitleBarOverlay on Linux. Under KDE/KWin that can
+  // still leave the XWayland window unmanaged and unable to take keyboard
+  // focus. Contract: upstream still gates titlebar overlay sync on both Win32
+  // and Linux before patching.
+  {
+    name: "linux-titlebar-overlay-sync",
+    find: findLinuxTitlebarOverlaySyncPatch,
+    assertBefore: assertLinuxTitlebarOverlaySyncBefore,
+    apply: patchLinuxTitlebarOverlaySync,
+    assertAfter: assertLinuxTitlebarOverlaySyncAfter
   }
 ];
 
@@ -126,6 +168,14 @@ export const dynamicToolThreadStartRequestContract = {
   assertAfter: assertDynamicToolThreadStartRequestAfter
 };
 
+export const linuxRecursiveFileWatchContract = {
+  name: "linux-recursive-file-watch",
+  find: findLinuxRecursiveFileWatchPatch,
+  assertBefore: assertLinuxRecursiveFileWatchBefore,
+  apply: patchLinuxRecursiveFileWatch,
+  assertAfter: assertLinuxRecursiveFileWatchAfter
+};
+
 export async function patchUpstreamApp(stageAppDir) {
   const buildDir = path.join(stageAppDir, ".vite", "build");
   const entries = await fs.readdir(buildDir);
@@ -140,12 +190,16 @@ export async function patchUpstreamApp(stageAppDir) {
   const patched = patchUpstreamMainSource(source);
 
   if (patched === source) {
+    await patchLinuxOpenTargetWorkerChunks(buildDir, entries);
+    await patchLinuxRecursiveFileWatchChunks(buildDir, entries);
     await patchDynamicToolSchemaContractChunks(stageAppDir);
     await patchDynamicToolThreadStartRequestChunks(stageAppDir);
     return;
   }
 
   await fs.writeFile(mainBundlePath, patched);
+  await patchLinuxOpenTargetWorkerChunks(buildDir, entries);
+  await patchLinuxRecursiveFileWatchChunks(buildDir, entries);
   await patchDynamicToolSchemaContractChunks(stageAppDir);
   await patchDynamicToolThreadStartRequestChunks(stageAppDir);
 }
@@ -162,8 +216,48 @@ export function patchLinuxOpenTargetsSource(source) {
   return applyUpstreamPatchContract(source, upstreamPatchContracts[2]);
 }
 
+export function patchLinuxOpenTargetWorkerSource(source) {
+  try {
+    if (source.includes(linuxOpenTargetWorkerMarker)) {
+      assertOpenTargetWorkerAfter(source);
+      return source;
+    }
+
+    assertOpenTargetWorkerBefore(source);
+    const workerRegistry = findOpenTargetWorkerRegistry(source);
+    const patched = replaceOnce(
+      source,
+      workerRegistry.anchor,
+      `${linuxOpenTargetWorkerDefinitions(workerRegistry.pathLookupName)};${workerRegistry.anchor.replace("[", "[__codexLinuxWorkerVSCode,__codexLinuxWorkerVSCodeInsiders,__codexLinuxWorkerCursor,__codexLinuxWorkerZed,__codexLinuxWorkerNvim,")}`
+    );
+
+    assertOpenTargetWorkerAfter(patched);
+    return patched;
+  } catch (error) {
+    if (error instanceof UpstreamPatchContractError) {
+      throw error;
+    }
+
+    throw new UpstreamPatchContractError("open-target-worker", error.message, {
+      cause: error
+    });
+  }
+}
+
 export function patchDisableTransparencySource(source) {
   return applyUpstreamPatchContracts(source, upstreamPatchContracts.slice(3));
+}
+
+export function patchLinuxPrimaryTitlebarSource(source) {
+  return applyUpstreamPatchContract(source, upstreamPatchContracts[5]);
+}
+
+export function patchLinuxTitlebarOverlaySyncSource(source) {
+  return applyUpstreamPatchContract(source, upstreamPatchContracts[6]);
+}
+
+export function patchLinuxRecursiveFileWatchSource(source) {
+  return applyUpstreamPatchContract(source, linuxRecursiveFileWatchContract);
 }
 
 export function patchLinuxOwlFeatureBindingSource(source) {
@@ -322,6 +416,55 @@ async function patchOwlFeatureBindingChunks(buildDir, entries) {
     if (patched !== source) {
       await fs.writeFile(bundlePath, patched);
     }
+  }
+}
+
+async function patchLinuxOpenTargetWorkerChunks(buildDir, entries) {
+  if (!entries.includes("worker.js")) {
+    throw new UpstreamPatchContractError("open-target-worker", "missing worker.js");
+  }
+
+  const workerPath = path.join(buildDir, "worker.js");
+  const source = await fs.readFile(workerPath, "utf8");
+  const patched = patchLinuxOpenTargetWorkerSource(source);
+
+  if (patched !== source) {
+    await fs.writeFile(workerPath, patched);
+  }
+}
+
+async function patchLinuxRecursiveFileWatchChunks(buildDir, entries) {
+  let matched = 0;
+
+  for (const entry of entries) {
+    if (!entry.endsWith(".js")) {
+      continue;
+    }
+
+    const bundlePath = path.join(buildDir, entry);
+    const source = await fs.readFile(bundlePath, "utf8");
+
+    if (
+      !source.includes("startFileWatch") ||
+      !source.includes(".watch(") ||
+      !source.includes("recursive:")
+    ) {
+      continue;
+    }
+
+    const patched = patchLinuxRecursiveFileWatchSource(source);
+    matched++;
+
+    if (patched !== source) {
+      await fs.writeFile(bundlePath, patched);
+    }
+  }
+
+  if (matched === 0) {
+    throw new UpstreamPatchContractError(
+      linuxRecursiveFileWatchContract.name,
+      "missing startFileWatch bundle"
+    );
   }
 }
 
@@ -1037,6 +1180,40 @@ function assertOpenTargetsAfter(source) {
   }
 }
 
+function assertOpenTargetWorkerBefore(source) {
+  findOpenTargetWorkerRegistry(source);
+
+  if (!source.includes("get-target-command")) {
+    throw new Error("missing worker target command handler");
+  }
+
+  if (!source.includes("Unknown open target")) {
+    throw new Error("missing worker unknown-target guard");
+  }
+}
+
+function assertOpenTargetWorkerAfter(source) {
+  if (!source.includes(`${linuxOpenTargetWorkerMarker}=`)) {
+    throw new Error("missing Linux open target worker definitions");
+  }
+
+  for (const target of [
+    "__codexLinuxWorkerVSCode",
+    "__codexLinuxWorkerVSCodeInsiders",
+    "__codexLinuxWorkerCursor",
+    "__codexLinuxWorkerZed",
+    "__codexLinuxWorkerNvim"
+  ]) {
+    if (!source.includes(target)) {
+      throw new Error(`missing ${target}`);
+    }
+  }
+
+  if (!source.includes("get-target-command")) {
+    throw new Error("missing worker target command handler");
+  }
+}
+
 function patchLinuxWindowBackground(source) {
   const patch = findLinuxWindowBackgroundPatch(source);
 
@@ -1430,6 +1607,252 @@ function assertLinuxWindowTransparencyAfter(source) {
   }
 }
 
+function patchLinuxPrimaryTitlebar(source) {
+  const patch = findLinuxPrimaryTitlebarPatch(source);
+
+  if (patch?.status === "patched") {
+    return source;
+  }
+
+  if (!patch) {
+    throw new Error("Unable to apply upstream patch; missing primary titlebar branch");
+  }
+
+  const [, platformVar, overlayFunction, overlayArg] = patch.match;
+  const replacement = patch.anchor.replace(
+    `${platformVar}===\`win32\`||${platformVar}===\`linux\`?{titleBarStyle:\`hidden\`,titleBarOverlay:${overlayFunction}(${overlayArg})}:{titleBarStyle:\`default\`}`,
+    `${platformVar}===\`win32\`?{titleBarStyle:\`hidden\`,titleBarOverlay:${overlayFunction}(${overlayArg})}:{titleBarStyle:\`default\`}`
+  );
+
+  return replaceOnce(source, patch.anchor, replacement);
+}
+
+function findLinuxPrimaryTitlebarPatch(source) {
+  if (linuxPrimaryTitlebarPatchedRegex.test(source)) {
+    return { status: "patched" };
+  }
+
+  const match = source.match(linuxPrimaryTitlebarPatchRegex);
+
+  if (!match) {
+    return null;
+  }
+
+  return { status: "patch", match, anchor: match[0] };
+}
+
+function assertLinuxPrimaryTitlebarBefore(source) {
+  const patch = findLinuxPrimaryTitlebarPatch(source);
+
+  if (!patch || patch.status !== "patch") {
+    throw new Error("missing Linux primary hidden titlebar branch");
+  }
+}
+
+function assertLinuxPrimaryTitlebarAfter(source) {
+  const patch = findLinuxPrimaryTitlebarPatch(source);
+
+  if (!patch || patch.status !== "patched") {
+    throw new Error("Linux primary titlebar assertion failed");
+  }
+
+  if (source.includes("===`win32`||") && source.includes("===`linux`?{titleBarStyle:`hidden`")) {
+    throw new Error("Linux still uses hidden titlebar branch");
+  }
+}
+
+function patchLinuxTitlebarOverlaySync(source) {
+  const patch = findLinuxTitlebarOverlaySyncPatch(source);
+
+  if (patch?.status === "patched") {
+    return source;
+  }
+
+  if (!patch) {
+    throw new Error("Unable to apply upstream patch; missing Linux titlebar overlay sync");
+  }
+
+  let patched = replaceOnce(source, linuxTitlebarOverlayZoomBefore, linuxTitlebarOverlayZoomAfter);
+  patched = replaceOnce(patched, linuxTitlebarOverlaySyncBefore, linuxTitlebarOverlaySyncAfter);
+
+  return patched;
+}
+
+function findLinuxTitlebarOverlaySyncPatch(source) {
+  const hasZoomBefore =
+    source.includes(linuxTitlebarOverlayZoomBefore) && source.includes(".setTitleBarOverlay(");
+  const hasSyncBefore =
+    source.includes(linuxTitlebarOverlaySyncBefore) &&
+    source.includes("installApplicationMenuTitleBarOverlaySync");
+
+  if (hasZoomBefore || hasSyncBefore) {
+    return { status: "patch" };
+  }
+
+  const hasZoomAfter =
+    source.includes(linuxTitlebarOverlayZoomAfter) && source.includes(".setTitleBarOverlay(");
+  const hasSyncAfter =
+    source.includes(linuxTitlebarOverlaySyncAfter) &&
+    source.includes("installApplicationMenuTitleBarOverlaySync");
+
+  if (hasZoomAfter && hasSyncAfter) {
+    return { status: "patched" };
+  }
+
+  return null;
+}
+
+function assertLinuxTitlebarOverlaySyncBefore(source) {
+  const patch = findLinuxTitlebarOverlaySyncPatch(source);
+
+  if (!patch || patch.status !== "patch") {
+    throw new Error("missing Linux titlebar overlay sync branches");
+  }
+}
+
+function assertLinuxTitlebarOverlaySyncAfter(source) {
+  const patch = findLinuxTitlebarOverlaySyncPatch(source);
+
+  if (!patch || patch.status !== "patched") {
+    throw new Error("Linux titlebar overlay sync assertion failed");
+  }
+
+  if (
+    source.includes(linuxTitlebarOverlayZoomBefore) ||
+    source.includes(linuxTitlebarOverlaySyncBefore)
+  ) {
+    throw new Error("Linux still enters titlebar overlay sync");
+  }
+}
+
+function patchLinuxRecursiveFileWatch(source, patch = findLinuxRecursiveFileWatchPatch(source)) {
+  if (patch?.status === "patched") {
+    return source;
+  }
+
+  if (!patch || patch.status !== "patch") {
+    throw new Error("Unable to apply upstream patch; missing recursive file watch helper");
+  }
+
+  const helper = source.includes(linuxRecursiveFileWatchMarker)
+    ? ""
+    : `function ${linuxRecursiveFileWatchMarker}(e){return process.platform===\`linux\`&&process.env.CODEX_LINUX_RECURSIVE_WATCH!==\`1\`?!1:e}`;
+  const replacements = patch.patches.map(target => {
+    const valueSource = source.slice(target.valueStart, target.valueEnd);
+
+    return {
+      start: target.valueStart,
+      end: target.valueEnd,
+      replacement: `${linuxRecursiveFileWatchMarker}(${valueSource})`
+    };
+  });
+
+  replacements.sort((left, right) => right.start - left.start);
+
+  let patched = source;
+  for (const replacement of replacements) {
+    patched = `${patched.slice(0, replacement.start)}${replacement.replacement}${patched.slice(replacement.end)}`;
+  }
+
+  return helper ? `${patched}\n${helper}` : patched;
+}
+
+function findLinuxRecursiveFileWatchPatch(source) {
+  const patches = findLinuxRecursiveFileWatchPatches(source);
+
+  if (patches.length > 0) {
+    return { status: "patch", patches };
+  }
+
+  if (
+    source.includes(linuxRecursiveFileWatchMarker) &&
+    source.includes("startFileWatch") &&
+    source.includes(".watch(")
+  ) {
+    return { status: "patched" };
+  }
+
+  if (source.includes("startFileWatch") && source.includes(".watch(")) {
+    throw new Error("Unable to apply upstream patch; missing recursive watch option");
+  }
+
+  return null;
+}
+
+function findLinuxRecursiveFileWatchPatches(source) {
+  const ast = parseJavaScript(source);
+  const patches = [];
+
+  walkAst(ast, node => {
+    if (
+      node.type !== "MethodDefinition" ||
+      propertyName(node.key) !== "startFileWatch" ||
+      node.value?.params?.[0]?.type !== "Identifier"
+    ) {
+      return;
+    }
+
+    const optionsParamName = node.value.params[0].name;
+
+    walkAst(node.value.body, child => {
+      if (child.type !== "CallExpression" || !isMemberPropertyNamed(child.callee, "watch")) {
+        return;
+      }
+
+      const watchOptions = child.arguments[1];
+
+      if (watchOptions?.type !== "ObjectExpression") {
+        throw new Error("Unable to apply upstream patch; file watch options are not an object");
+      }
+
+      const recursiveProperty = getObjectProperty(watchOptions, "recursive");
+
+      if (!recursiveProperty) {
+        throw new Error("Unable to apply upstream patch; file watch options omit recursive");
+      }
+
+      if (isCallToIdentifier(recursiveProperty.value, linuxRecursiveFileWatchMarker)) {
+        return;
+      }
+
+      if (!isMemberExpressionNamed(recursiveProperty.value, optionsParamName, "recursive")) {
+        throw new Error("Unable to apply upstream patch; recursive file watch value changed");
+      }
+
+      patches.push({
+        valueStart: recursiveProperty.value.start,
+        valueEnd: recursiveProperty.value.end
+      });
+    });
+  });
+
+  return patches;
+}
+
+function assertLinuxRecursiveFileWatchBefore(source) {
+  const patch = findLinuxRecursiveFileWatchPatch(source);
+
+  if (!patch || patch.status !== "patch") {
+    throw new Error("missing unguarded recursive file watch helper");
+  }
+}
+
+function assertLinuxRecursiveFileWatchAfter(source) {
+  const patch = findLinuxRecursiveFileWatchPatch(source);
+
+  if (!patch || patch.status !== "patched") {
+    throw new Error("Linux recursive file watch assertion failed");
+  }
+
+  if (!source.includes("CODEX_LINUX_RECURSIVE_WATCH")) {
+    throw new Error("missing recursive file watch opt-in environment flag");
+  }
+
+  if (source.includes("{recursive:e.recursive}")) {
+    throw new Error("unguarded recursive file watch remains");
+  }
+}
+
 function patchOpenTargetMap(source) {
   if (source.includes("appPath:process.platform===`linux`")) {
     return source;
@@ -1485,6 +1908,32 @@ function findOpenTargetRegistry(source) {
     anchor,
     openCommandName: findOpenCommandName(source)
   };
+}
+
+function findOpenTargetWorkerRegistry(source) {
+  const match = source.match(openTargetWorkerRegistryRegex);
+
+  if (!match) {
+    throw new Error("Unable to apply upstream patch; missing open target worker registry");
+  }
+
+  const pathLookupName = findOpenTargetWorkerPathLookupName(source);
+  const anchor = source.slice(match.index, source.indexOf("]", match.index) + 1);
+
+  return {
+    anchor,
+    pathLookupName
+  };
+}
+
+function findOpenTargetWorkerPathLookupName(source) {
+  const match = source.match(/pathCommand:([A-Za-z_$][\w$]*)\(`code`\)/);
+
+  if (!match) {
+    throw new Error("Unable to apply upstream patch; missing open target worker path lookup");
+  }
+
+  return match[1];
 }
 
 function findOpenCommandName(source) {

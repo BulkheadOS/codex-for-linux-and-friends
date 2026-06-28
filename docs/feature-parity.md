@@ -36,7 +36,7 @@ official DMG -> local extraction -> Linux native module rebuild
 | CLI handoff | Targeted | Launcher resolves an installed `codex` CLI without storing credentials. |
 | Webview rendering | Targeted | Uses the same local webview port convention as prior community ports. |
 | `codex:` deep links | Targeted | Desktop entries register `x-scheme-handler/codex`, refresh the MIME database, and set the user-level handler when supported. |
-| Automations | Best-effort inherited | Official docs describe local app requirements. This wrapper must keep the app running and the project path available; account gating remains upstream. |
+| Automations | Blocked on guarded KDE Wayland; best-effort elsewhere | Official docs require the local app to run at the scheduled time and access the chosen project path. The current KDE Wayland crash guard intentionally prevents launch on affected sessions, so automations are not usable there until a safe launch path is verified. Account gating remains upstream. |
 | Appshots | Not claimed on Linux | Official docs describe Appshots as available in the Codex app on macOS. |
 | Computer Use | Not claimed on Linux | Official docs describe Computer Use as available on macOS and Windows in supported regions. |
 | In-app browser | Best-effort inherited | Official docs describe an in-app browser plugin. If the upstream Electron app enables it without OS APIs, this wrapper should not block it. |
@@ -52,6 +52,10 @@ test the Linux path locally without copying personal data or app binaries into g
 A feature is marked `Best-effort inherited` when the wrapper should preserve the
 upstream app behavior but the feature depends on OpenAI account state, remote
 feature flags, or local GUI sign-in that this repository cannot safely automate.
+
+A feature is marked `Blocked on guarded KDE Wayland` when upstream support may
+exist but the local launcher correctly refuses to start on this desktop class
+because prior launches caused KWin coredumps.
 
 A feature is marked `Not claimed on Linux` when official docs currently describe
 the feature as macOS-only or macOS/Windows-only. Do not market those features as
