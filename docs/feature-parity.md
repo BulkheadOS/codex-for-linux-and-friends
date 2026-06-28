@@ -14,9 +14,15 @@ Sources checked on 2026-06-28:
 - Remote connections: https://developers.openai.com/codex/remote-connections
 - Chronicle: https://developers.openai.com/codex/memories/chronicle
 
+Reproducible source check:
+
+```bash
+npm run verify:openai-features -- --json
+```
+
 OpenAI's public quickstart currently lists the Codex app as available for macOS
-and Windows, with Linux behind a notification path. This repository is therefore
-a compatibility project, not a supported OpenAI Linux distribution.
+and Windows, with Linux behind a notification path. This repository is
+therefore a compatibility project, not a supported OpenAI Linux distribution.
 
 ## Current target
 
@@ -64,6 +70,10 @@ working on Linux until live verification proves they work in the port.
 Run `bash bin/codex-linux diagnostics` for a host-specific check. It does not
 start Electron, and it reports Appshots, Computer Use, Automations, KDE Wayland
 launch safety, and Linux file-watch posture in one place.
+
+Run `npm run verify:openai-features -- --json` before changing this table. That
+command reads only official OpenAI developer docs, does not launch the app, and
+fails closed if the docs no longer support the current Linux feature claims.
 
 ## User-experience bar
 

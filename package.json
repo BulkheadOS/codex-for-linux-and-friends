@@ -9,7 +9,8 @@
     "test:node": "node --test tests/*.test.mjs",
     "lint:desktop": "bash tests/desktop.test.sh",
     "qa:public": "bash scripts/qa-public-safety.sh",
-    "verify:fediverse": "node scripts/verify-fediverse-profiles.mjs"
+    "verify:fediverse": "node scripts/verify-fediverse-profiles.mjs",
+    "verify:openai-features": "node scripts/verify-openai-feature-support.mjs"
   },
   "license": "MIT",
   "devDependencies": {

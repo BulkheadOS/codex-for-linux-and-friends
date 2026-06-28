@@ -83,7 +83,11 @@ Verification:
 
 ```bash
 bash bin/codex-linux status
+npm run verify:openai-features -- --json
 ```
+
+The verifier reads only official OpenAI developer docs and fails closed if those
+docs no longer support the current Linux feature table.
 
 ## Article: Appshots or Computer Use are missing on Linux
 

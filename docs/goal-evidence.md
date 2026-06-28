@@ -45,11 +45,23 @@ Date of this evidence pass: 2026-06-28.
 
 ## Upstream Codex app features
 
+Reproducible official-docs check:
+
+```bash
+npm run verify:openai-features -- --json
+```
+
+The check reads only `developers.openai.com` pages, does not launch the app, and
+fails closed if official docs no longer support the current Linux feature
+claims.
+
 | Requirement | Status | Evidence |
 |---|---|---|
-| Appshots | Incomplete / not claimed on Linux | Official docs reviewed in `docs/feature-parity.md` currently describe Appshots as macOS-only. |
-| Computer Use | Incomplete / not claimed on Linux | Official docs reviewed in `docs/feature-parity.md` currently describe Computer Use as macOS/Windows-only. |
-| Automations | Guarded on KDE Wayland; incomplete elsewhere | Official docs require the local app to run and access the project path. The crash guard blocks the current KDE Wayland session. |
+| Appshots | Incomplete / not claimed on Linux | `npm run verify:openai-features -- --json` reports `appshots.status=not-claimed-on-linux` from official docs currently describing Appshots as macOS-only. |
+| Computer Use | Incomplete / not claimed on Linux | `npm run verify:openai-features -- --json` reports `computer-use.status=not-claimed-on-linux` from official docs currently describing Computer Use as macOS/Windows-only. |
+| Automations | Guarded on KDE Wayland; incomplete elsewhere | `npm run verify:openai-features -- --json` reports `automations.status=requires-local-running-app`; local diagnostics show the crash guard blocks the current KDE Wayland session. |
+| Remote/mobile host setup | Incomplete / not claimed on Linux | `npm run verify:openai-features -- --json` reports `remote-mobile-hosts.status=not-claimed-on-linux` from official docs currently describing Codex App hosts on macOS and Windows. |
+| Chronicle | Incomplete / not claimed on Linux | `npm run verify:openai-features -- --json` reports `chronicle.status=not-claimed-on-linux` from official docs currently describing Chronicle as macOS-only with macOS Screen Recording and Accessibility permissions. |
 | Other inherited app features | Incomplete unless live-tested | Features that depend on account flags, remote state, or GUI sign-in need a safe desktop session before this repo can claim them. |
 
 ## Fediverse profile evidence

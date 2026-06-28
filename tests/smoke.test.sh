@@ -950,7 +950,13 @@ if ! grep -q '"verify:fediverse"' package.json; then
   exit 1
 fi
 
+if ! grep -q '"verify:openai-features"' package.json; then
+  echo "package scripts must expose the OpenAI feature support verifier" >&2
+  exit 1
+fi
+
 node --check scripts/verify-fediverse-profiles.mjs >/dev/null
+node --check scripts/verify-openai-feature-support.mjs >/dev/null
 
 for term in 'WCAG 2.2' ADHD AuDHD diagnostics 'upstream app UI' 'personal data'; do
   if ! grep -q "$term" docs/accessibility-ux.md; then
@@ -975,9 +981,12 @@ done
 
 for term in \
   'KWin hard crashes' \
+  'npm run verify:openai-features -- --json' \
   'Appshots | Incomplete / not claimed on Linux' \
   'Computer Use | Incomplete / not claimed on Linux' \
   'Automations | Guarded on KDE Wayland' \
+  'Remote/mobile host setup | Incomplete / not claimed on Linux' \
+  'Chronicle | Incomplete / not claimed on Linux' \
   'External observations are not repo-proven' \
   '@coolockvillage@coolockvillage.ie' \
   '@electrictown@electrictown.ie' \

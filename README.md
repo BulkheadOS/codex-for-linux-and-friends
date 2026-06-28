@@ -56,6 +56,12 @@ Check launch safety and feature availability without starting the app:
 bash bin/codex-linux diagnostics
 ```
 
+Refresh official OpenAI feature-support evidence before changing public claims:
+
+```bash
+npm run verify:openai-features -- --json
+```
+
 Use a DMG you already downloaded:
 
 ```bash
