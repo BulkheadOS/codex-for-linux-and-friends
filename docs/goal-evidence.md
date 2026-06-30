@@ -3,7 +3,7 @@
 This matrix tracks what the public repository can prove now, what it deliberately
 does not claim, and what still needs live verification outside this repository.
 
-Date of this evidence pass: 2026-06-28.
+Date of this evidence pass: 2026-06-29.
 
 ## Evidence classes
 
@@ -31,6 +31,7 @@ Date of this evidence pass: 2026-06-28.
 |---|---|---|
 | Avoid KWin hard crashes on KDE Wayland | Guarded | Installed launcher and `codex-linux launch` exit before Electron on KDE Wayland unless an unsafe maintainer override is set. |
 | Avoid process leaks | Proven by no-launch diagnostics | `codex-linux diagnostics --json` reports `electron=0`, `crashpad=0`, `webviewServer=0`, and webview port `5175` closed on the guarded host. |
+| Capture memory-leak evidence safely | Proven for no-launch diagnostics | `codex-linux diagnostics --json` reports aggregate Codex-related `runtimeHealth.memory` counts and RSS totals without publishing raw process command lines, local paths, or project names. |
 | Avoid high file-watch pressure failures | Proven | Diagnostics reports inotify instance/watch usage and the launcher refuses when usage reaches the configured guard threshold. |
 | No GUI launch during unsafe QA | Guarded | Current KDE Wayland host is a no-launch test environment because earlier launches caused KWin coredumps. |
 

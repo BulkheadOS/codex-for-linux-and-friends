@@ -3,7 +3,7 @@ Type=Application
 Name=Codex for Linux
 GenericName=Unofficial Codex App compatibility launcher
 Comment=Unofficial local Linux compatibility launcher for the OpenAI Codex desktop app
-Exec=env CODEX_KDE_WAYLAND_ALLOW_UNSAFE=1 __EXEC__ %u
+Exec=__EXEC__ %u
 Icon=__ICON__
 Terminal=false
 Categories=Development;

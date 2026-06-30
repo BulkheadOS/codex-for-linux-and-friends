@@ -8,6 +8,7 @@ unset CODEX_INOTIFY_PRESSURE_ALLOW_UNSAFE
 unset CODEX_INOTIFY_GUARD_THRESHOLD_PERCENT
 unset CODEX_LINUX_INOTIFY_USAGE_FIXTURE
 unset CODEX_LINUX_INOTIFY_LIMITS_FIXTURE
+unset CODEX_LINUX_MEMORY_FIXTURE
 export CODEX_LINUX_INOTIFY_USAGE_FIXTURE='0 0'
 export CODEX_LINUX_INOTIFY_LIMITS_FIXTURE='1000 1000'
 
@@ -51,7 +52,7 @@ case "$diagnostics_output" in
   * ) echo "diagnostics should not claim Linux Computer Use support" >&2; exit 1 ;;
 esac
 case "$diagnostics_output" in
-  *"Runtime health:"*"Processes: electron="*"Webview port: 5175 "*"Inotify: max_user_instances="* ) ;;
+  *"Runtime health:"*"Processes: electron="*"Memory: processes="*"Webview port: 5175 "*"Inotify: max_user_instances="* ) ;;
   * ) echo "diagnostics should include no-launch runtime health evidence" >&2; exit 1 ;;
 esac
 
@@ -65,6 +66,9 @@ if (value.features.computerUse.status !== "not-claimed-on-linux") process.exit(1
 if (typeof value.runtimeHealth?.processes?.electron !== "number") process.exit(1);
 if (typeof value.runtimeHealth?.processes?.crashpad !== "number") process.exit(1);
 if (typeof value.runtimeHealth?.processes?.webviewServer !== "number") process.exit(1);
+if (typeof value.runtimeHealth?.memory?.processCount !== "number") process.exit(1);
+if (typeof value.runtimeHealth?.memory?.rssKibTotal !== "number") process.exit(1);
+if (typeof value.runtimeHealth?.memory?.maxRssKib !== "number") process.exit(1);
 if (value.runtimeHealth?.webviewPort?.port !== 5175) process.exit(1);
 if (!["open", "closed", "unknown"].includes(value.runtimeHealth?.webviewPort?.status)) process.exit(1);
 if (value.runtimeHealth?.inotify?.maxUserInstances !== null && typeof value.runtimeHealth?.inotify?.maxUserInstances !== "number") process.exit(1);
@@ -79,6 +83,14 @@ if (value.runtimeHealth?.inotify?.pressure?.guardThresholdPercent !== 90) proces
 if (typeof value.runtimeHealth?.inotify?.pressure?.override !== "boolean") process.exit(1);
 if (value.runtimeHealth?.inotify?.pressure?.status !== "ok") process.exit(1);
 ' "$diagnostics_json"
+
+memory_fixture_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_LINUX_MEMORY_FIXTURE='2 3000 2000' CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+if (value.runtimeHealth.memory.processCount !== 2) process.exit(1);
+if (value.runtimeHealth.memory.rssKibTotal !== 3000) process.exit(1);
+if (value.runtimeHealth.memory.maxRssKib !== 2000) process.exit(1);
+' "$memory_fixture_json"
 
 watch_override_json="$(env -u KDE_FULL_SESSION -u KDE_SESSION_VERSION -u XDG_SESSION_TYPE -u XDG_CURRENT_DESKTOP -u XDG_SESSION_DESKTOP -u DESKTOP_SESSION -u WAYLAND_DISPLAY CODEX_LINUX_RECURSIVE_WATCH=1 CODEX_LINUX_INSTALL_DIR="$(mktemp -d)/missing" bin/codex-linux diagnostics --json)"
 node -e '
@@ -930,7 +942,8 @@ fi
 
 if ! grep -q 'High memory usage' .github/ISSUE_TEMPLATE/crash_report.yml ||
    ! grep -q 'High inotify instance/watch usage' .github/ISSUE_TEMPLATE/crash_report.yml ||
-   ! grep -q 'Process or inotify evidence' .github/ISSUE_TEMPLATE/crash_report.yml; then
+   ! grep -q 'Process, memory, or inotify evidence' .github/ISSUE_TEMPLATE/crash_report.yml ||
+   ! grep -q 'runtimeHealth.memory' .github/ISSUE_TEMPLATE/crash_report.yml; then
   echo "crash issue template must capture memory, inotify, and process-leak evidence" >&2
   exit 1
 fi

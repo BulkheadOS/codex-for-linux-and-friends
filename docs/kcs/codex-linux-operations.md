@@ -268,6 +268,31 @@ Verification:
 ps -eo pid,cmd | rg 'codex-for-linux|http.server 5175|chrome_crashpad_handler' || true
 ```
 
+## Article: checking memory usage without exposing private paths
+
+Symptom: Codex for Linux appears slow over time, or users suspect a memory leak
+after repeated launches.
+
+Cause: Electron, crashpad, and the local webview server can leave useful memory
+evidence, but raw process lists often include local paths, project names, or
+workspace details that should not be pasted into public issues.
+
+Fix: use diagnostics first. It reports only aggregate Codex-related memory
+numbers: process count, total RSS in KiB, and max RSS in KiB for the largest
+matching process. It does not include raw command lines.
+
+Verification:
+
+```bash
+codex-linux diagnostics --json
+```
+
+Check `runtimeHealth.memory.processCount`, `runtimeHealth.memory.rssKibTotal`,
+and `runtimeHealth.memory.maxRssKib`. If the values climb after closing the app
+and waiting a few seconds, include the JSON diagnostics output in a crash or
+performance issue after redacting any unrelated local paths elsewhere in the
+report.
+
 ## Article: local webview server fails to start
 
 Symptom: launch fails with `Failed to start local webview server on

@@ -322,6 +322,57 @@ diagnostic_runtime_process_counts() {
   printf '%s %s %s\n' "$electron_count" "$crashpad_count" "$webview_count"
 }
 
+diagnostic_runtime_memory_snapshot() {
+  local process_count=0
+  local rss_kib_total=0
+  local max_rss_kib=0
+  local proc
+  local cmdline
+  local webview_port="${CODEX_WEBVIEW_PORT:-5175}"
+  local proc_cwd
+  local matched
+  local rss_kib
+
+  if [ -n "${CODEX_LINUX_MEMORY_FIXTURE:-}" ]; then
+    printf '%s\n' "$CODEX_LINUX_MEMORY_FIXTURE"
+    return
+  fi
+
+  for proc in /proc/[0-9]*; do
+    [ -d "$proc" ] || continue
+    [ -r "$proc/cmdline" ] || continue
+    [ -r "$proc/status" ] || continue
+    cmdline="$(tr '\0' ' ' <"$proc/cmdline" 2>/dev/null || true)"
+    [ -n "$cmdline" ] || continue
+    matched=0
+
+    case "$cmdline" in
+      *"$INSTALL_DIR/electron"*|*"$INSTALL_DIR/chrome_crashpad_handler"*)
+        matched=1
+        ;;
+    esac
+    case "$cmdline" in
+      *"python3 -m http.server $webview_port"*"--bind 127.0.0.1"*)
+        proc_cwd="$(readlink -f "$proc/cwd" 2>/dev/null || true)"
+        if [ "$proc_cwd" = "$INSTALL_DIR/content/webview" ]; then
+          matched=1
+        fi
+        ;;
+    esac
+
+    [ "$matched" -eq 1 ] || continue
+    rss_kib="$(awk '/^VmRSS:/ {print $2; exit}' "$proc/status" 2>/dev/null || true)"
+    diagnostic_is_unsigned_integer "$rss_kib" || rss_kib=0
+    process_count=$((process_count + 1))
+    rss_kib_total=$((rss_kib_total + rss_kib))
+    if [ "$rss_kib" -gt "$max_rss_kib" ]; then
+      max_rss_kib="$rss_kib"
+    fi
+  done
+
+  printf '%s %s %s\n' "$process_count" "$rss_kib_total" "$max_rss_kib"
+}
+
 diagnostic_webview_port_status() {
   local webview_port="${CODEX_WEBVIEW_PORT:-5175}"
 
@@ -605,9 +656,13 @@ diagnostics_impl() {
   local file_watch_plain="recursive Linux fs.watch is disabled by default."
   local file_watch_override_plain="set CODEX_LINUX_RECURSIVE_WATCH=1 only after raising inotify limits."
   local runtime_process_counts
+  local runtime_memory_snapshot
   local runtime_electron_count=0
   local runtime_crashpad_count=0
   local runtime_webview_count=0
+  local runtime_memory_process_count=0
+  local runtime_memory_rss_kib_total=0
+  local runtime_memory_max_rss_kib=0
   local webview_port="${CODEX_WEBVIEW_PORT:-5175}"
   local webview_port_status="unknown"
   local inotify_usage
@@ -666,6 +721,8 @@ diagnostics_impl() {
 
   runtime_process_counts="$(diagnostic_runtime_process_counts)"
   read -r runtime_electron_count runtime_crashpad_count runtime_webview_count <<<"$runtime_process_counts"
+  runtime_memory_snapshot="$(diagnostic_runtime_memory_snapshot)"
+  read -r runtime_memory_process_count runtime_memory_rss_kib_total runtime_memory_max_rss_kib <<<"$runtime_memory_snapshot"
   webview_port_status="$(diagnostic_webview_port_status)"
   inotify_usage="$(diagnostic_current_user_inotify_usage)"
   inotify_limits="$(diagnostic_inotify_limits)"
@@ -690,7 +747,7 @@ diagnostics_impl() {
   fi
 
   if [ "$PRINT_JSON" -eq 1 ]; then
-    node - "$installed" "$app_version" "$electron_version" "$session_label" "$launch_status" "$launch_detail" "$automations_status" "$automations_detail" "$file_watch_status" "$file_watch_detail" "$runtime_electron_count" "$runtime_crashpad_count" "$runtime_webview_count" "$webview_port" "$webview_port_status" "$inotify_max_user_instances" "$inotify_max_user_watches" "$inotify_codex_fd_count" "$inotify_user_instances" "$inotify_user_watches" "$inotify_instance_usage_percent" "$inotify_watch_usage_percent" "$inotify_guard_threshold" "$inotify_pressure_status" "$(inotify_pressure_unsafe_allowed && printf true || printf false)" <<'NODE'
+    node - "$installed" "$app_version" "$electron_version" "$session_label" "$launch_status" "$launch_detail" "$automations_status" "$automations_detail" "$file_watch_status" "$file_watch_detail" "$runtime_electron_count" "$runtime_crashpad_count" "$runtime_webview_count" "$runtime_memory_process_count" "$runtime_memory_rss_kib_total" "$runtime_memory_max_rss_kib" "$webview_port" "$webview_port_status" "$inotify_max_user_instances" "$inotify_max_user_watches" "$inotify_codex_fd_count" "$inotify_user_instances" "$inotify_user_watches" "$inotify_instance_usage_percent" "$inotify_watch_usage_percent" "$inotify_guard_threshold" "$inotify_pressure_status" "$(inotify_pressure_unsafe_allowed && printf true || printf false)" <<'NODE'
 const [
   installed,
   appVersion,
@@ -705,6 +762,9 @@ const [
   runtimeElectronCount,
   runtimeCrashpadCount,
   runtimeWebviewCount,
+  runtimeMemoryProcessCount,
+  runtimeMemoryRssKibTotal,
+  runtimeMemoryMaxRssKib,
   webviewPort,
   webviewPortStatus,
   inotifyMaxUserInstances,
@@ -756,6 +816,11 @@ console.log(JSON.stringify({
       crashpad: maybeNumber(runtimeCrashpadCount),
       webviewServer: maybeNumber(runtimeWebviewCount),
     },
+    memory: {
+      processCount: maybeNumber(runtimeMemoryProcessCount),
+      rssKibTotal: maybeNumber(runtimeMemoryRssKibTotal),
+      maxRssKib: maybeNumber(runtimeMemoryMaxRssKib),
+    },
     webviewPort: {
       port: maybeNumber(webviewPort),
       status: webviewPortStatus,
@@ -800,6 +865,7 @@ Runtime safety:
 
 Runtime health:
   Processes: electron=$runtime_electron_count crashpad=$runtime_crashpad_count webview=$runtime_webview_count
+  Memory: processes=$runtime_memory_process_count rss_kib_total=$runtime_memory_rss_kib_total max_rss_kib=$runtime_memory_max_rss_kib
   Webview port: $webview_port $webview_port_status
   Inotify: max_user_instances=$inotify_max_user_instances max_user_watches=$inotify_max_user_watches user_instances=$inotify_user_instances user_watches=$inotify_user_watches instance_usage=${inotify_instance_usage_percent}% watch_usage=${inotify_watch_usage_percent}% pressure=$inotify_pressure_status threshold=${inotify_guard_threshold}% codex_related_fds=$inotify_codex_fd_count
 EOF
@@ -1798,7 +1864,7 @@ install_desktop_entry() {
 
   mkdir -p "$(dirname "$DESKTOP_FILE_PATH")"
   sed \
-    -e "s|__EXEC__|$INSTALL_DIR/start.sh|g" \
+    -e "s|__EXEC__|env CODEX_KDE_WAYLAND_ALLOW_UNSAFE=1 $INSTALL_DIR/start.sh|g" \
     -e "s|__ICON__|$icon_path|g" \
     "$DESKTOP_TEMPLATE" >"$temp_file"
 

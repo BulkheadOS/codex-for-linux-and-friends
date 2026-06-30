@@ -43,9 +43,10 @@ body:
   - type: textarea
     id: process_check
     attributes:
-      label: Process or inotify evidence
-      description: Paste a narrow, redacted check. Avoid broad process lists with private paths.
+      label: Process, memory, or inotify evidence
+      description: Paste diagnostics memory fields or a narrow, redacted check. Avoid broad process lists with private paths.
       placeholder: |
+        runtimeHealth.memory: processCount=0 rssKibTotal=0 maxRssKib=0
         ps -eo pid,ppid,args | rg 'codex-for-linux|chrome_crashpad_handler|http.server 5175'
         sysctl fs.inotify.max_user_instances fs.inotify.max_user_watches
     validations:

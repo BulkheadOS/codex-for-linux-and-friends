@@ -87,6 +87,7 @@ changing Appshots, Computer Use, Automations, or inherited upstream UI claims.
 |---|---|---|
 | KDE Wayland launch | Blocked by design | Crash guard exits before Electron to avoid KWin restart risk. |
 | Inotify pressure | Guarded | Diagnostics reports instance/watch usage and launch guard status. |
+| Memory growth evidence | Guarded | Diagnostics reports aggregate Codex-related memory counts without raw process command lines. |
 | Appshots | Not claimed on Linux | Official docs currently describe Appshots as macOS-only. |
 | Computer Use | Not claimed on Linux | Official docs currently describe Computer Use as macOS/Windows-only. |
 | Automations | Blocked on guarded KDE Wayland | Automations need the local app running; the crash guard prevents that session path. |
