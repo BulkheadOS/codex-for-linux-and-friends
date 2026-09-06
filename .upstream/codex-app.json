@@ -1,8 +1,8 @@
 {
   "arch": "x64",
   "url": "https://persistent.oaistatic.com/codex-app-prod/Codex-latest-x64.dmg",
-  "etag": "0x8DED40B32FC93A1",
-  "lastModified": "Sat, 27 Jun 2026 05:16:09 GMT",
-  "contentLength": 488624725,
+  "etag": "\"0x8DF0B9DE194EAC9\"",
+  "lastModified": "Sat, 05 Sep 2026 22:34:43 GMT",
+  "contentLength": 631579926,
   "contentType": "application/x-apple-diskimage"
 }
